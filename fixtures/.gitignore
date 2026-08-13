@@ -1,0 +1,4 @@
+# Textbook PDFs are copyrighted source material and stay out of version control.
+# The fixture pins the file by sha256 instead; see README.md.
+source/*
+!source/.gitkeep

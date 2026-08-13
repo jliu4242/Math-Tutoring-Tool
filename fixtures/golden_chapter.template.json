@@ -1,0 +1,101 @@
+{
+  "fixture_version": "1",
+
+  "annotation": {
+    "annotated_by": "TODO your name",
+    "annotated_at": "TODO YYYY-MM-DD",
+    "method": "manual",
+    "notes": "TODO anything a future reader needs to know about how this chapter was read"
+  },
+
+  "source": {
+    "pdf_filename": "TODO put the PDF in fixtures/source/ and name it here",
+    "pdf_sha256": "TODO run: python -c \"import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())\" fixtures/source/YOUR.pdf",
+    "textbook_title": "TODO",
+    "edition": null,
+    "publisher": null,
+    "answer_key_page_start": null,
+    "answer_key_page_end": null,
+    "page_offset": 0
+  },
+
+  "chapter": {
+    "number": "TODO as printed, e.g. 3",
+    "title": "TODO",
+    "page_start": 0,
+    "page_end": 0,
+    "ordinal": 0
+  },
+
+  "sections": [
+    {
+      "key": "TODO e.g. 3.1",
+      "title": "TODO",
+      "ordinal": 0,
+      "page_start": 0,
+      "page_end": 0
+    },
+    {
+      "key": "TODO e.g. 3.2",
+      "title": "TODO",
+      "ordinal": 1,
+      "page_start": 0,
+      "page_end": 0
+    }
+  ],
+
+  "concepts": [
+    {
+      "slug": "todo-kebab-case",
+      "canonical_name": "TODO",
+      "description": null,
+      "section_keys": ["TODO section key"],
+      "local_name": null
+    }
+  ],
+
+  "worked_examples": [
+    {
+      "key": "TODO stable local id",
+      "section_key": "TODO",
+      "example_number": "TODO as printed",
+      "page_number": 0,
+      "ordinal": 0,
+      "problem_text": "TODO",
+      "solution_text": "TODO or null"
+    }
+  ],
+
+  "problems": [
+    {
+      "key": "TODO stable local id",
+      "section_key": "TODO",
+      "problem_number": "TODO as printed",
+      "page_number": 0,
+      "ordinal": 0,
+      "body_plain": "TODO",
+      "body_latex": null,
+      "concept_slugs": []
+    }
+  ],
+
+  "answers": [
+    {
+      "problem_key": "TODO must match a problems[].key",
+      "answer_text": "TODO",
+      "answer_source_page": 0,
+      "solution_text": null,
+      "solution_source_page": null,
+      "expected_matching_method": "deterministic",
+      "expected_confidence_max": null,
+      "ambiguity_note": null
+    }
+  ],
+
+  "expectations": {
+    "problem_count": 0,
+    "worked_example_count": 0,
+    "answer_only_count": 0,
+    "full_solution_count": 0
+  }
+}

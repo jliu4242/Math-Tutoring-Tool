@@ -1,0 +1,229 @@
+{
+  "fixture_version": "1",
+
+  "annotation": {
+    "annotated_by": "Claude (machine-extracted, UNVERIFIED — not ground truth)",
+    "annotated_at": "2026-08-10",
+    "method": "manual",
+    "notes": "ILLUSTRATIVE ONLY. Not ground truth and must never be used as one. Everything here was mechanically extracted from the real PDF (pypdf text layer) and has NOT been checked by a human against the page. The 'method: manual' value is part of the shape being illustrated, not a claim about this file. Content is a SAMPLE of section 3.1, not the full chapter: 7 of ~30 exercises and 2 of 4 worked examples. Graph-dependent exercises (3.1 #5, #8) are deliberately absent — their parabolas are images with no text layer, so no faithful body_plain exists. The concepts array and every judgment-stage field (concept_slugs, variation grouping, the ambiguous-numbering case) are intentionally left empty for hand annotation per ARCHITECTURE.md sections 4.1 and 10.2; validate_fixture.py will report those as errors until they are filled. Every page number in this file is a 1-based PDF page index: printed_page_number + page_offset = pdf_page_index, so printed 140 = PDF 151."
+  },
+
+  "source": {
+    "pdf_filename": "mcgrawhill-pre-calc-11-textbook.pdf",
+    "pdf_sha256": "b0a8bd7f85b374ec71bb2ebceb2c618768eaf281f958f11784490f3a29392d88",
+    "textbook_title": "McGraw-Hill Ryerson Pre-Calculus 11",
+    "edition": null,
+    "publisher": "McGraw-Hill Ryerson",
+    "answer_key_page_start": 541,
+    "answer_key_page_end": 554,
+    "page_offset": 11
+  },
+
+  "chapter": {
+    "number": "3",
+    "title": "Quadratic Functions",
+    "page_start": 151,
+    "page_end": 214,
+    "ordinal": 2
+  },
+
+  "sections": [
+    {
+      "key": "3.1",
+      "title": "Investigating Quadratic Functions in Vertex Form",
+      "ordinal": 0,
+      "page_start": 153,
+      "page_end": 173
+    },
+    {
+      "key": "3.2",
+      "title": "Investigating Quadratic Functions in Standard Form",
+      "ordinal": 1,
+      "page_start": 174,
+      "page_end": 190
+    },
+    {
+      "key": "3.3",
+      "title": "Completing the Square",
+      "ordinal": 2,
+      "page_start": 191,
+      "page_end": 208
+    }
+  ],
+
+  "concepts": [],
+
+  "worked_examples": [
+    {
+      "key": "ex-3.1-3",
+      "section_key": "3.1",
+      "example_number": "3",
+      "page_number": 164,
+      "ordinal": 2,
+      "problem_text": "Determine the Number of x-Intercepts Using a and q. Determine the number of x-intercepts for each quadratic function. a) f(x) = 0.8x^2 - 3  b) f(x) = 2(x - 1)^2  c) f(x) = -3(x + 2)^2 - 1",
+      "solution_text": "You can determine the number of x-intercepts if you know the location of the vertex and direction of opening. Visualize the general position and shape of the graph based on the values of a and q: the value of a determines if the graph opens upward or downward, and the value of q determines if the vertex is above, below, or on the x-axis. a) For f(x) = 0.8x^2 - 3, a > 0 so the graph opens upward and q < 0 so the vertex is below the x-axis; it crosses the x-axis twice, so there are 2 x-intercepts. b) For f(x) = 2(x - 1)^2, a > 0 so the graph opens upward and q = 0 so the vertex is on the x-axis; it touches the x-axis once, so there is 1 x-intercept. c) For f(x) = -3(x + 2)^2 - 1, a < 0 so the graph opens downward and q < 0 so the vertex is below the x-axis; it does not cross the x-axis, so there are 0 x-intercepts."
+    },
+    {
+      "key": "ex-3.1-4",
+      "section_key": "3.1",
+      "example_number": "4",
+      "page_number": 165,
+      "ordinal": 3,
+      "problem_text": "Model Problems Using Quadratic Functions in Vertex Form. The deck of the Lions' Gate Bridge in Vancouver is suspended from two main cables attached to the tops of two supporting towers. Between the towers, the main cables take the shape of a parabola as they support the weight of the deck. The towers are 111 m tall relative to the water's surface and are 472 m apart. The lowest point of the cables is approximately 67 m above the water's surface. a) Model the shape of the cables with a quadratic function in vertex form. b) Determine the height above the surface of the water of a point on the cables that is 90 m horizontally from one of the towers. Express your answer to the nearest tenth of a metre.",
+      "solution_text": null
+    }
+  ],
+
+  "problems": [
+    {
+      "key": "p-3.1-1",
+      "section_key": "3.1",
+      "problem_number": "1",
+      "page_number": 168,
+      "ordinal": 0,
+      "body_plain": "Describe how you can obtain the graph of each function from the graph of f(x) = x^2. State the direction of opening, whether it has a maximum or a minimum value, and the range for each. a) f(x) = 7x^2  b) f(x) = (1/6)x^2  c) f(x) = -4x^2  d) f(x) = -0.2x^2",
+      "body_latex": "Describe how you can obtain the graph of each function from the graph of $f(x) = x^2$. State the direction of opening, whether it has a maximum or a minimum value, and the range for each. a) $f(x) = 7x^2$ b) $f(x) = \\frac{1}{6}x^2$ c) $f(x) = -4x^2$ d) $f(x) = -0.2x^2$",
+      "concept_slugs": []
+    },
+    {
+      "key": "p-3.1-2",
+      "section_key": "3.1",
+      "problem_number": "2",
+      "page_number": 168,
+      "ordinal": 1,
+      "body_plain": "Describe how the graphs of the functions in each pair are related. Then, sketch the graph of the second function in each pair, and determine the vertex, the equation of the axis of symmetry, the domain and range, and any intercepts. a) y = x^2 and y = x^2 + 1  b) y = x^2 and y = (x - 2)^2  c) y = x^2 and y = x^2 - 4  d) y = x^2 and y = (x + 3)^2",
+      "body_latex": "Describe how the graphs of the functions in each pair are related. Then, sketch the graph of the second function in each pair, and determine the vertex, the equation of the axis of symmetry, the domain and range, and any intercepts. a) $y = x^2$ and $y = x^2 + 1$ b) $y = x^2$ and $y = (x - 2)^2$ c) $y = x^2$ and $y = x^2 - 4$ d) $y = x^2$ and $y = (x + 3)^2$",
+      "concept_slugs": []
+    },
+    {
+      "key": "p-3.1-3",
+      "section_key": "3.1",
+      "problem_number": "3",
+      "page_number": 168,
+      "ordinal": 2,
+      "body_plain": "Describe how to sketch the graph of each function using transformations. a) f(x) = (x + 5)^2 + 11  b) f(x) = -3x^2 - 10  c) f(x) = 5(x + 20)^2 - 21  d) f(x) = -(1/8)(x - 5.6)^2 + 13.8",
+      "body_latex": "Describe how to sketch the graph of each function using transformations. a) $f(x) = (x + 5)^2 + 11$ b) $f(x) = -3x^2 - 10$ c) $f(x) = 5(x + 20)^2 - 21$ d) $f(x) = -\\frac{1}{8}(x - 5.6)^2 + 13.8$",
+      "concept_slugs": []
+    },
+    {
+      "key": "p-3.1-4",
+      "section_key": "3.1",
+      "problem_number": "4",
+      "page_number": 168,
+      "ordinal": 3,
+      "body_plain": "Sketch the graph of each function. Identify the vertex, the axis of symmetry, the direction of opening, the maximum or minimum value, the domain and range, and any intercepts. a) y = -(x - 3)^2 + 9  b) y = 0.25(x + 4)^2 + 1  c) y = -3(x - 1)^2 + 12  d) y = (1/2)(x - 2)^2 - 2",
+      "body_latex": "Sketch the graph of each function. Identify the vertex, the axis of symmetry, the direction of opening, the maximum or minimum value, the domain and range, and any intercepts. a) $y = -(x - 3)^2 + 9$ b) $y = 0.25(x + 4)^2 + 1$ c) $y = -3(x - 1)^2 + 12$ d) $y = \\frac{1}{2}(x - 2)^2 - 2$",
+      "concept_slugs": []
+    },
+    {
+      "key": "p-3.1-6",
+      "section_key": "3.1",
+      "problem_number": "6",
+      "page_number": 168,
+      "ordinal": 5,
+      "body_plain": "For the function f(x) = 5(x - 15)^2 - 100, explain how you can identify each of the following without graphing. a) the coordinates of the vertex  b) the equation of the axis of symmetry  c) the direction of opening  d) whether the function has a maximum or minimum value, and what that value is  e) the domain and range  f) the number of x-intercepts",
+      "body_latex": "For the function $f(x) = 5(x - 15)^2 - 100$, explain how you can identify each of the following without graphing. a) the coordinates of the vertex b) the equation of the axis of symmetry c) the direction of opening d) whether the function has a maximum or minimum value, and what that value is e) the domain and range f) the number of $x$-intercepts",
+      "concept_slugs": []
+    },
+    {
+      "key": "p-3.1-7",
+      "section_key": "3.1",
+      "problem_number": "7",
+      "page_number": 169,
+      "ordinal": 6,
+      "body_plain": "Without graphing, identify the location of the vertex and the axis of symmetry, the direction of opening and the maximum or minimum value, the domain and range, and the number of x-intercepts for each function. a) y = -4x^2 + 14  b) y = (x + 18)^2 - 8  c) y = 6(x - 7)^2  d) y = -(1/9)(x + 4)^2 - 36",
+      "body_latex": "Without graphing, identify the location of the vertex and the axis of symmetry, the direction of opening and the maximum or minimum value, the domain and range, and the number of $x$-intercepts for each function. a) $y = -4x^2 + 14$ b) $y = (x + 18)^2 - 8$ c) $y = 6(x - 7)^2$ d) $y = -\\frac{1}{9}(x + 4)^2 - 36$",
+      "concept_slugs": []
+    },
+    {
+      "key": "p-3.1-11",
+      "section_key": "3.1",
+      "problem_number": "11",
+      "page_number": 169,
+      "ordinal": 10,
+      "body_plain": "Describe how to obtain the graph of y = 20 - 5x^2 using transformations on the graph of y = x^2.",
+      "body_latex": "Describe how to obtain the graph of $y = 20 - 5x^2$ using transformations on the graph of $y = x^2$.",
+      "concept_slugs": []
+    }
+  ],
+
+  "answers": [
+    {
+      "problem_key": "p-3.1-1",
+      "answer_text": "a) Since a > 0 in f(x) = 7x^2, the graph opens upward, has a minimum value, and has a range of {y | y >= 0, y in R}. b) Since a > 0 in f(x) = (1/6)x^2, the graph opens upward, has a minimum value, and has a range of {y | y >= 0, y in R}. c) Since a < 0 in f(x) = -4x^2, the graph opens downward, has a maximum value, and has a range of {y | y <= 0, y in R}. d) Since a < 0 in f(x) = -0.2x^2, the graph opens downward, has a maximum value, and has a range of {y | y <= 0, y in R}.",
+      "answer_source_page": 541,
+      "solution_text": null,
+      "solution_source_page": null,
+      "expected_matching_method": "deterministic",
+      "expected_confidence_max": null,
+      "ambiguity_note": null
+    },
+    {
+      "problem_key": "p-3.1-2",
+      "answer_text": "a) The shapes of the graphs are the same with the parabola of y = x^2 + 1 being one unit higher. vertex: (0, 1), axis of symmetry: x = 0, domain: {x | x in R}, range: {y | y >= 1, y in R}, no x-intercepts, y-intercept occurs at (0, 1). b) The shapes of the graphs are the same with the parabola of y = (x - 2)^2 being two units to the right. vertex: (2, 0), axis of symmetry: x = 2, domain: {x | x in R}, range: {y | y >= 0, y in R}, x-intercept occurs at (2, 0), y-intercept occurs at (0, 4). c) The shapes of the graphs are the same with the parabola of y = x^2 - 4 being four units lower. vertex: (0, -4), axis of symmetry: x = 0, domain: {x | x in R}, range: {y | y >= -4, y in R}, x-intercepts occur at (-2, 0) and (2, 0), y-intercept occurs at (0, -4). d) The shapes of the graphs are the same with the parabola of y = (x + 3)^2 being three units to the left. vertex: (-3, 0), axis of symmetry: x = -3, domain: {x | x in R}, range: {y | y >= 0, y in R}, x-intercept occurs at (-3, 0), y-intercept occurs at (0, 9).",
+      "answer_source_page": 541,
+      "solution_text": null,
+      "solution_source_page": null,
+      "expected_matching_method": "deterministic",
+      "expected_confidence_max": null,
+      "ambiguity_note": "The printed answer also includes four sketched graphs that have no text layer. Only the textual part of the answer is captured here."
+    },
+    {
+      "problem_key": "p-3.1-3",
+      "answer_text": "a) Given the graph of y = x^2, move the entire graph 5 units to the left and 11 units up. b) Given the graph of y = x^2, apply the change in width, which is a multiplication of the y-values by a factor of 3, making it narrower, reflect it in the x-axis so it opens downward, and move the entire new graph down 10 units. c) Given the graph of y = x^2, apply the change in width, which is a multiplication of the y-values by a factor of 5, making it narrower. Move the entire new graph 20 units to the left and 21 units down. d) Given the graph of y = x^2, apply the change in width, which is a multiplication of the y-values by a factor of 1/8, making it wider, reflect it in the x-axis so it opens downward, and move the entire new graph 5.6 units to the right and 13.8 units up.",
+      "answer_source_page": 542,
+      "solution_text": null,
+      "solution_source_page": null,
+      "expected_matching_method": "deterministic",
+      "expected_confidence_max": null,
+      "ambiguity_note": null
+    },
+    {
+      "problem_key": "p-3.1-4",
+      "answer_text": "a) vertex: (3, 9), axis of symmetry: x = 3, opens downward, maximum value of 9, domain: {x | x in R}, range: {y | y <= 9, y in R}, x-intercepts occur at (0, 0) and (6, 0), y-intercept occurs at (0, 0). b) vertex: (-4, 1), axis of symmetry: x = -4, opens upward, minimum value of 1, domain: {x | x in R}, range: {y | y >= 1, y in R}, no x-intercepts, y-intercept occurs at (0, 5). c) vertex: (1, 12), axis of symmetry: x = 1, opens downward, maximum value of 12, domain: {x | x in R}, range: {y | y <= 12, y in R}, x-intercepts occur at (-1, 0) and (3, 0), y-intercept occurs at (0, 9). d) vertex: (2, -2), axis of symmetry: x = 2, opens upward, minimum value of -2, domain: {x | x in R}, range: {y | y >= -2, y in R}, x-intercepts occur at (0, 0) and (4, 0), y-intercept occurs at (0, 0).",
+      "answer_source_page": 542,
+      "solution_text": null,
+      "solution_source_page": null,
+      "expected_matching_method": "deterministic",
+      "expected_confidence_max": null,
+      "ambiguity_note": "The printed answer also includes four sketched graphs that have no text layer. Only the textual part of the answer is captured here."
+    },
+    {
+      "problem_key": "p-3.1-6",
+      "answer_text": "a) The vertex is located at (p, q), or (15, -100). b) The equation of the axis of symmetry is x = p, or x = 15. c) Since a > 0, the graph opens upward. d) Since a > 0, the graph has a minimum value of q, or -100. e) The domain is {x | x in R}. Since the function has a minimum value of -100, the range is {y | y >= -100, y in R}. f) Since the graph has a minimum value of -100 and opens upward, there are two x-intercepts.",
+      "answer_source_page": 542,
+      "solution_text": "For the function f(x) = 5(x - 15)^2 - 100, a = 5, p = 15, and q = -100.",
+      "solution_source_page": 542,
+      "expected_matching_method": "deterministic",
+      "expected_confidence_max": null,
+      "ambiguity_note": "The answer key prints a shared derivation line identifying a, p and q before the per-part answers, and the parts run across a page break (PDF 542 into 543). Whether that leading line counts as a solution under ARCHITECTURE.md section 13 is a judgment call and needs human confirmation."
+    },
+    {
+      "problem_key": "p-3.1-7",
+      "answer_text": "a) vertex: (0, 14), axis of symmetry: x = 0, opens downward, maximum value of 14, domain: {x | x in R}, range: {y | y <= 14, y in R}, two x-intercepts. b) vertex: (-18, -8), axis of symmetry: x = -18, opens upward, minimum value of -8, domain: {x | x in R}, range: {y | y >= -8, y in R}, two x-intercepts. c) vertex: (7, 0), axis of symmetry: x = 7, opens upward, minimum value of 0, domain: {x | x in R}, range: {y | y >= 0, y in R}, one x-intercept. d) vertex: (-4, -36), axis of symmetry: x = -4, opens downward, maximum value of -36, domain: {x | x in R}, range: {y | y <= -36, y in R}, no x-intercepts.",
+      "answer_source_page": 543,
+      "solution_text": null,
+      "solution_source_page": null,
+      "expected_matching_method": "deterministic",
+      "expected_confidence_max": null,
+      "ambiguity_note": null
+    },
+    {
+      "problem_key": "p-3.1-11",
+      "answer_text": "Starting with the graph of y = x^2, apply the change in width, which is a multiplication of the y-values by a factor of 5, reflect the graph in the x-axis, and then move the entire graph up 20 units.",
+      "answer_source_page": 543,
+      "solution_text": null,
+      "solution_source_page": null,
+      "expected_matching_method": "deterministic",
+      "expected_confidence_max": null,
+      "ambiguity_note": null
+    }
+  ],
+
+  "expectations": {
+    "problem_count": 7,
+    "worked_example_count": 2,
+    "answer_only_count": 6,
+    "full_solution_count": 1
+  }
+}

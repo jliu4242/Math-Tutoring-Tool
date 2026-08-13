@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from routers import planner, generator, extractor, grader, bank
+from routers import planner, generator, extractor, grader, bank, ingestion
 
 app = FastAPI(title="MathFlow AI API")
 
@@ -21,6 +21,7 @@ app.include_router(generator.router)
 app.include_router(extractor.router)
 app.include_router(grader.router)
 app.include_router(bank.router)
+app.include_router(ingestion.router)
 
 
 @app.get("/ping")

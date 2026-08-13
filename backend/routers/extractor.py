@@ -31,5 +31,5 @@ async def extract_problems(
 @router.post("/approve", response_model=list[Problem])
 async def approve_problems(problems: list[Problem]):
     for p in problems:
-        supabase.table("problems").insert(p.model_dump(mode="json")).execute()
+        supabase.table("generated_problems").insert(p.model_dump(mode="json")).execute()
     return problems

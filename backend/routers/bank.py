@@ -13,7 +13,7 @@ async def list_problems(
     source: str | None = None,
     search: str | None = None,
 ):
-    query = supabase.table("problems").select("*")
+    query = supabase.table("generated_problems").select("*")
     if topic:
         query = query.eq("topic", topic)
     if grade_level:
@@ -31,24 +31,24 @@ async def list_problems(
 @router.post("", response_model=Problem)
 async def create_problem(req: ProblemCreate):
     problem = Problem(**req.model_dump())
-    supabase.table("problems").insert(problem.model_dump(mode="json")).execute()
+    supabase.table("generated_problems").insert(problem.model_dump(mode="json")).execute()
     return problem
 
 
 @router.get("/{problem_id}", response_model=Problem)
 async def get_problem(problem_id: str):
-    result = supabase.table("problems").select("*").eq("id", problem_id).single().execute()
+    result = supabase.table("generated_problems").select("*").eq("id", problem_id).single().execute()
     return Problem(**result.data)
 
 
 @router.put("/{problem_id}", response_model=Problem)
 async def update_problem(problem_id: str, req: ProblemCreate):
-    supabase.table("problems").update(req.model_dump(mode="json")).eq("id", problem_id).execute()
-    result = supabase.table("problems").select("*").eq("id", problem_id).single().execute()
+    supabase.table("generated_problems").update(req.model_dump(mode="json")).eq("id", problem_id).execute()
+    result = supabase.table("generated_problems").select("*").eq("id", problem_id).single().execute()
     return Problem(**result.data)
 
 
 @router.delete("/{problem_id}")
 async def delete_problem(problem_id: str):
-    supabase.table("problems").delete().eq("id", problem_id).execute()
+    supabase.table("generated_problems").delete().eq("id", problem_id).execute()
     return {"deleted": True}

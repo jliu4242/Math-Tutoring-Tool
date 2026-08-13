@@ -10,5 +10,5 @@ router = APIRouter(prefix="/generate", tags=["generator"])
 async def generate_problems(req: GenerateRequest):
     problems = await run_generator(req)
     for p in problems:
-        supabase.table("problems").insert(p.model_dump(mode="json")).execute()
+        supabase.table("generated_problems").insert(p.model_dump(mode="json")).execute()
     return problems

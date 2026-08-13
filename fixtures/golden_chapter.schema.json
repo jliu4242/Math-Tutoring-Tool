@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tutoring-tool/fixtures/golden_chapter.schema.json",
+  "title": "Golden chapter fixture",
+  "description": "Hand-annotated ground truth for one real textbook chapter. Every automated test in Phase 1 Steps 3-5 diffs pipeline output against this file. Mismatches are bugs, not 'close enough'.",
+  "type": "object",
+  "required": ["fixture_version", "annotation", "source", "chapter", "sections", "concepts", "worked_examples", "problems", "answers"],
+  "additionalProperties": false,
+  "properties": {
+    "fixture_version": { "type": "string" },
+
+    "annotation": {
+      "type": "object",
+      "required": ["annotated_by", "annotated_at", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "annotated_by": { "type": "string", "minLength": 1 },
+        "annotated_at": { "type": "string", "format": "date" },
+        "method": {
+          "const": "manual",
+          "description": "Must be 'manual'. IMPLEMENTATION-PLAN.md Step 2 requires hand-annotation; AI-produced ground truth cannot check AI stages."
+        },
+        "notes": { "type": "string" }
+      }
+    },
+
+    "source": {
+      "type": "object",
+      "required": ["pdf_filename", "pdf_sha256", "textbook_title"],
+      "additionalProperties": false,
+      "properties": {
+        "pdf_filename": { "type": "string", "description": "Filename inside fixtures/source/." },
+        "pdf_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "textbook_title": { "type": "string" },
+        "edition": { "type": ["string", "null"] },
+        "publisher": { "type": ["string", "null"] },
+        "answer_key_page_start": { "type": ["integer", "null"], "minimum": 1 },
+        "answer_key_page_end": { "type": ["integer", "null"], "minimum": 1 },
+        "page_offset": {
+          "type": "integer",
+          "default": 0,
+          "description": "printed_page_number + page_offset = 1-based PDF page index. All page numbers in this fixture are PDF page indices."
+        }
+      }
+    },
+
+    "chapter": {
+      "type": "object",
+      "required": ["number", "title", "page_start", "page_end", "ordinal"],
+      "additionalProperties": false,
+      "properties": {
+        "number": { "type": ["string", "null"] },
+        "title": { "type": "string", "minLength": 1 },
+        "page_start": { "type": "integer", "minimum": 1, "description": "Also doubles as the PDF page range to extract for this fixture." },
+        "page_end": { "type": "integer", "minimum": 1 },
+        "ordinal": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Flat list. Sections are not nested; a heading printed as '3.2.1' is either its own top-level entry or folded into its parent's page range.",
+      "items": {
+        "type": "object",
+        "required": ["key", "title", "ordinal", "page_start", "page_end"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "minLength": 1, "description": "Stable local id, e.g. '3.2'. Used for cross-references within this file only." },
+          "title": { "type": "string", "minLength": 1 },
+          "ordinal": { "type": "integer", "minimum": 0 },
+          "page_start": { "type": "integer", "minimum": 1 },
+          "page_end": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+
+    "concepts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slug", "canonical_name", "section_keys"],
+        "additionalProperties": false,
+        "properties": {
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "canonical_name": { "type": "string", "minLength": 1 },
+          "description": { "type": ["string", "null"] },
+          "section_keys": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "local_name": { "type": ["string", "null"], "description": "What this textbook calls it, if different from canonical_name." }
+        }
+      }
+    },
+
+    "worked_examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "section_key", "example_number", "page_number", "ordinal", "problem_text"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "section_key": { "type": "string" },
+          "example_number": { "type": ["string", "null"] },
+          "page_number": { "type": "integer", "minimum": 1 },
+          "ordinal": { "type": "integer", "minimum": 0 },
+          "problem_text": { "type": "string", "minLength": 1 },
+          "solution_text": { "type": ["string", "null"] }
+        }
+      }
+    },
+
+    "problems": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["key", "section_key", "problem_number", "page_number", "ordinal", "body_plain"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "section_key": { "type": "string" },
+          "problem_number": { "type": ["string", "null"], "description": "As printed, e.g. '17', '17a'." },
+          "page_number": { "type": "integer", "minimum": 1 },
+          "ordinal": { "type": "integer", "minimum": 0 },
+          "body_plain": { "type": "string", "minLength": 1 },
+          "body_latex": { "type": ["string", "null"] },
+          "concept_slugs": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+
+    "answers": {
+      "type": "array",
+      "description": "One entry per answer-key entry that maps to a problem. Problems with no answer-key entry are simply absent.",
+      "items": {
+        "type": "object",
+        "required": ["problem_key", "answer_text", "answer_source_page", "solution_text", "expected_matching_method"],
+        "additionalProperties": false,
+        "properties": {
+          "problem_key": { "type": "string" },
+          "answer_text": { "type": "string", "minLength": 1 },
+          "answer_source_page": { "type": "integer", "minimum": 1 },
+          "solution_text": {
+            "type": ["string", "null"],
+            "description": "null for answer-only entries. ARCHITECTURE.md section 13: never guess a solution."
+          },
+          "solution_source_page": { "type": ["integer", "null"], "minimum": 1 },
+          "expected_matching_method": {
+            "enum": ["deterministic", "structural", "llm", "manual"],
+            "description": "Which tier of the section 14 hierarchy should resolve this. Step 5 asserts the pipeline used this tier."
+          },
+          "expected_confidence_max": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Upper bound the pipeline's confidence must not exceed. Set for genuinely ambiguous entries so an over-confident match fails the test."
+          },
+          "ambiguity_note": { "type": ["string", "null"] }
+        }
+      }
+    },
+
+    "expectations": {
+      "type": "object",
+      "description": "Free-form counts asserted by the fixture tests; helps catch silent under-extraction.",
+      "additionalProperties": false,
+      "properties": {
+        "problem_count": { "type": "integer", "minimum": 0 },
+        "worked_example_count": { "type": "integer", "minimum": 0 },
+        "answer_only_count": { "type": "integer", "minimum": 0 },
+        "full_solution_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
