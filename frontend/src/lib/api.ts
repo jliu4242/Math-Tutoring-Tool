@@ -77,6 +77,33 @@ export const extractProblems = (formData: FormData) =>
 export const approveProblems = (problems: Problem[]) =>
   request<Problem[]>("/extract/approve", { method: "POST", body: JSON.stringify(problems) });
 
+// Textbooks
+export interface SaveTextbookResponse {
+  textbook_id: string;
+  source_id: string;
+  run_id: string;
+  status: string;
+  message: string;
+}
+
+export interface IngestionRunStatus {
+  id: string;
+  textbook_id: string;
+  status: "queued" | "processing" | "paused" | "failed" | "completed";
+  current_stage: string;
+  progress: Record<string, unknown>;
+  error: string | null;
+}
+
+export const saveTextbook = (formData: FormData) =>
+  fetch(`${API_URL}/textbooks`, { method: "POST", body: formData }).then(async (r) => {
+    const body = await r.json();
+    if (!r.ok) throw new Error(body?.detail || `Save textbook failed: ${r.status}`);
+    return body as SaveTextbookResponse;
+  });
+export const getIngestionRun = (runId: string) =>
+  request<IngestionRunStatus>(`/textbooks/runs/${runId}`);
+
 // Planner
 export const createPlan = (data: { topic: string; grade_level: string; duration_min: number }) =>
   request<LessonPlan>("/plan", { method: "POST", body: JSON.stringify(data) });

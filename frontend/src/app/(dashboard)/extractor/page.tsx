@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { extractProblems, approveProblems, Problem } from "@/lib/api";
-import { Upload, FileText, Copy, Trash2, Check } from "lucide-react";
+import { extractProblems, approveProblems, saveTextbook, getIngestionRun, Problem } from "@/lib/api";
+import { Upload, FileText, Copy, Trash2, Check, Library } from "lucide-react";
 
 export default function ExtractorPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -16,6 +16,21 @@ export default function ExtractorPage() {
   const [reviewIndex, setReviewIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+
+  // Save Textbook: independent of the extraction flow above -- own request, own
+  // status, never touches `loading`/`extracted`/`extractProblems`.
+  const [textbookTitle, setTextbookTitle] = useState("");
+  const [edition, setEdition] = useState("");
+  const [publisher, setPublisher] = useState("");
+  const [savingTextbook, setSavingTextbook] = useState(false);
+  const [saveStatusText, setSaveStatusText] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const onDrop = useCallback((files: File[]) => {
     if (files.length > 0) setFile(files[0]);
@@ -67,6 +82,69 @@ export default function ExtractorPage() {
       alert("Failed to approve problems.");
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const pollSaveRun = (runId: string) => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const run = await getIngestionRun(runId);
+        if (run.status === "completed") {
+          const structure = run.progress?.structure as
+            | { chapters_written?: number; sections_written?: number }
+            | undefined;
+          setSaveStatusText(
+            structure
+              ? `Done — ${structure.chapters_written ?? 0} chapters, ${structure.sections_written ?? 0} sections saved`
+              : "Done."
+          );
+          setSavingTextbook(false);
+          stopPolling();
+        } else if (run.status === "failed") {
+          setSaveStatusText(`Failed: ${run.error || "unknown error"}`);
+          setSavingTextbook(false);
+          stopPolling();
+        } else {
+          setSaveStatusText(
+            run.current_stage === "structure"
+              ? "Identifying chapters and sections…"
+              : "Extracting pages…"
+          );
+        }
+      } catch {
+        setSaveStatusText("Lost connection while checking save status.");
+        setSavingTextbook(false);
+        stopPolling();
+      }
+    }, 2000);
+  };
+
+  const handleSaveTextbook = async () => {
+    if (!file || !textbookTitle.trim()) return;
+    setSavingTextbook(true);
+    setSaveStatusText("Saving…");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("title", textbookTitle.trim());
+      if (startPage) formData.append("start_page", startPage);
+      if (endPage) formData.append("end_page", endPage);
+      if (edition.trim()) formData.append("edition", edition.trim());
+      if (publisher.trim()) formData.append("publisher", publisher.trim());
+      const result = await saveTextbook(formData);
+      setSaveStatusText("Extracting pages…");
+      pollSaveRun(result.run_id);
+    } catch (error) {
+      setSaveStatusText(error instanceof Error ? error.message : "Save failed.");
+      setSavingTextbook(false);
     }
   };
 
@@ -155,6 +233,54 @@ export default function ExtractorPage() {
           <Sparkles size={18} />
           {loading ? "Extracting..." : "Run Extraction Agent"}
         </button>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Save Textbook</h3>
+            <p className="text-xs text-gray-400 mt-1">
+              Saves pages and chapter/section structure to the textbook library. Independent of extraction above.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Textbook Title</label>
+            <input
+              type="text"
+              placeholder="e.g. Algebra 2"
+              value={textbookTitle}
+              onChange={(e) => setTextbookTitle(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+            />
+          </div>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="text-xs text-gray-500 mb-1 block">Edition (optional)</label>
+              <input
+                type="text"
+                value={edition}
+                onChange={(e) => setEdition(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs text-gray-500 mb-1 block">Publisher (optional)</label>
+              <input
+                type="text"
+                value={publisher}
+                onChange={(e) => setPublisher(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleSaveTextbook}
+            disabled={!file || !textbookTitle.trim() || savingTextbook}
+            className="w-full bg-slate-700 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Library size={18} />
+            {savingTextbook ? "Saving..." : "Save Textbook"}
+          </button>
+          {saveStatusText && <p className="text-xs text-gray-500">{saveStatusText}</p>}
+        </div>
       </div>
 
       {/* Right panel — review queue */}
