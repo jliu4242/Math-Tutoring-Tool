@@ -16,6 +16,7 @@ What gets preserved, per section 6:
     extracted text       -> raw_text
     text ordering        -> lines[], in reading order
     source coordinates   -> each line's bbox
+    heading signal        -> each line's font size (points), for heading detection
     image/figure refs    -> images[], with bboxes
     original PDF ref     -> pdf_sha256 + pdf_filename
 
@@ -76,6 +77,7 @@ class TextLine:
     top: float
     x1: float
     bottom: float
+    size: float = 0.0
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -85,6 +87,7 @@ class TextLine:
             "top": round(self.top, 2),
             "x1": round(self.x1, 2),
             "bottom": round(self.bottom, 2),
+            "size": round(self.size, 1),
         }
 
 
@@ -280,6 +283,9 @@ def _merge_words(words: list[dict[str, Any]]) -> dict[str, Any]:
         "x1": max(word["x1"] for word in ordered),
         "top": min(word["top"] for word in ordered),
         "bottom": max(word["bottom"] for word in ordered),
+        # Headings are rarely mixed-size within one line, so the max across the
+        # line's words is a safe stand-in for "this line's font size".
+        "size": max((word.get("size") or 0.0) for word in ordered),
     }
 
 
@@ -315,8 +321,14 @@ def _extract_with_pdfplumber(page: Any) -> tuple[str, list[TextLine], list[Image
                 "top": float(word["top"]),
                 "x1": float(word["x1"]),
                 "bottom": float(word["bottom"]),
+                "size": float(word.get("size") or 0.0),
             }
-            for word in page.extract_words()
+            # extra_attrs=["size"] pulls font size onto each word (pdfplumber splits
+            # a word at a size change, which is exactly what we want at a heading
+            # boundary). Chapter/section titles are reliably the largest text on
+            # their page, which is the signal structure_agent uses to tell a chapter
+            # heading apart from body text.
+            for word in page.extract_words(extra_attrs=["size"])
         ]
     except Exception:
         words = []
@@ -339,6 +351,7 @@ def _extract_with_pdfplumber(page: Any) -> tuple[str, list[TextLine], list[Image
             top=line["top"],
             x1=line["x1"],
             bottom=line["bottom"],
+            size=line.get("size", 0.0),
         )
         for ordinal, line in enumerate(ordered)
     ]

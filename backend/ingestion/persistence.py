@@ -112,43 +112,6 @@ def write_pages(
     return written
 
 
-def pages_already_extracted(source_id: str, start_page: int, end_page: int) -> bool:
-    """True if every page in [start_page, end_page] already has a textbook_pages row.
-
-    Pages have a natural per-row unit (page_number), so this is an exact coverage
-    check -- unlike structure_already_exists below, which can only check overlap.
-    """
-    client = _client()
-    result = (
-        client.table("textbook_pages")
-        .select("page_number", count="exact")
-        .eq("source_id", source_id)
-        .gte("page_number", start_page)
-        .lte("page_number", end_page)
-        .execute()
-    )
-    return (result.count or 0) >= (end_page - start_page + 1)
-
-
-def read_pages(source_id: str, start_page: int, end_page: int) -> list[dict[str, Any]]:
-    """Read back page_number + raw_text for a range.
-
-    Used when pdf_extraction is skipped because the range is already covered, but
-    the structure stage still needs the page text to run against.
-    """
-    client = _client()
-    result = (
-        client.table("textbook_pages")
-        .select("page_number, raw_text")
-        .eq("source_id", source_id)
-        .gte("page_number", start_page)
-        .lte("page_number", end_page)
-        .order("page_number")
-        .execute()
-    )
-    return result.data or []
-
-
 def structure_already_exists(textbook_id: str, page_start: int, page_end: int) -> bool:
     """True if any existing chapter for this textbook overlaps the requested range.
 
@@ -209,17 +172,43 @@ def set_run_status(run_id: str, **fields: Any) -> None:
     client.table("ingestion_runs").update(fields).eq("id", run_id).execute()
 
 
-def write_sections(chapter_id: str, sections: Iterable[dict[str, Any]]) -> int:
-    """Upsert sections for one chapter. Returns rows written.
+def write_sections(chapter_id: str, sections: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Upsert sections for one chapter. Returns the written rows, including ids.
 
     Upsert on (chapter_id, ordinal) -- sections_chapter_ordinal_key
     (20260817120000_phase1_sections_chapter_ordinal_unique.sql). content is never
     set here: it stays null until the later section-decomposition stage
     (ARCHITECTURE.md section 8), which this pipeline does not implement.
+
+    Returns rows (not a count) because link_pages_to_section needs each
+    section's id and page range to attach textbook_pages rows to it.
     """
     client = _client()
     rows = [{**section, "chapter_id": chapter_id} for section in sections]
     if not rows:
+        return []
+    result = client.table("sections").upsert(rows, on_conflict="chapter_id,ordinal").execute()
+    return result.data or []
+
+
+def link_pages_to_section(
+    source_id: str, section_id: str, page_start: int | None, page_end: int | None
+) -> int:
+    """Point every already-extracted page in [page_start, page_end] at section_id.
+
+    write_pages always runs before this (pdf_extraction precedes structure in
+    background.py), so the target rows already exist -- this only ever
+    updates, never inserts.
+    """
+    if page_start is None or page_end is None:
         return 0
-    client.table("sections").upsert(rows, on_conflict="chapter_id,ordinal").execute()
-    return len(rows)
+    client = _client()
+    result = (
+        client.table("textbook_pages")
+        .update({"section_id": section_id})
+        .eq("source_id", source_id)
+        .gte("page_number", page_start)
+        .lte("page_number", page_end)
+        .execute()
+    )
+    return len(result.data or [])

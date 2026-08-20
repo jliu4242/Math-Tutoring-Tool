@@ -5,6 +5,11 @@ import { useDropzone } from "react-dropzone";
 import { extractProblems, approveProblems, saveTextbook, getIngestionRun, Problem } from "@/lib/api";
 import { Upload, FileText, Copy, Trash2, Check, Library } from "lucide-react";
 
+// Must match backend/ingestion/background.py's NOT_A_CHAPTER_PREFIX exactly --
+// that's how a "the page range isn't a chapter" rejection is told apart from any
+// other ingestion_runs.error, since the run status has no separate error-code field.
+const NOT_A_CHAPTER_PREFIX = "NOT_A_CHAPTER: ";
+
 export default function ExtractorPage() {
   const [file, setFile] = useState<File | null>(null);
   const [startPage, setStartPage] = useState("");
@@ -24,6 +29,7 @@ export default function ExtractorPage() {
   const [publisher, setPublisher] = useState("");
   const [savingTextbook, setSavingTextbook] = useState(false);
   const [saveStatusText, setSaveStatusText] = useState("");
+  const [notAChapterNotice, setNotAChapterNotice] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -109,7 +115,13 @@ export default function ExtractorPage() {
           setSavingTextbook(false);
           stopPolling();
         } else if (run.status === "failed") {
-          setSaveStatusText(`Failed: ${run.error || "unknown error"}`);
+          const message = run.error || "unknown error";
+          if (message.startsWith(NOT_A_CHAPTER_PREFIX)) {
+            setNotAChapterNotice(message.slice(NOT_A_CHAPTER_PREFIX.length));
+            setSaveStatusText("");
+          } else {
+            setSaveStatusText(`Failed: ${message}`);
+          }
           setSavingTextbook(false);
           stopPolling();
         } else {
@@ -131,6 +143,7 @@ export default function ExtractorPage() {
     if (!file || !textbookTitle.trim()) return;
     setSavingTextbook(true);
     setSaveStatusText("Saving…");
+    setNotAChapterNotice(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -373,6 +386,24 @@ export default function ExtractorPage() {
                 className="px-5 py-2.5 bg-teal-700 text-white rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-teal-800 disabled:opacity-50"
               >
                 Approve All to Bank
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {notAChapterNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-3">
+            <h3 className="text-base font-semibold text-gray-900">This page range isn&apos;t a chapter</h3>
+            <p className="text-sm text-gray-600">{notAChapterNotice}</p>
+            <p className="text-xs text-gray-400">Nothing was saved. Adjust the page range to cover one complete chapter and try again.</p>
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setNotAChapterNotice(null)}
+                className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-semibold hover:bg-slate-800"
+              >
+                Got it
               </button>
             </div>
           </div>
