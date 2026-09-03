@@ -3,6 +3,7 @@ __pycache__/
 *.so
 .venv/
 .venv-mineru/
+.venv-win/
 venv/
 .env
 *.egg-info/
