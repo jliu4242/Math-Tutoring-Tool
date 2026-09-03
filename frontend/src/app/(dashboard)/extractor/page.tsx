@@ -107,11 +107,17 @@ export default function ExtractorPage() {
           const structure = run.progress?.structure as
             | { chapters_written?: number; sections_written?: number }
             | undefined;
-          setSaveStatusText(
-            structure
-              ? `Done — ${structure.chapters_written ?? 0} chapters, ${structure.sections_written ?? 0} sections saved`
-              : "Done."
-          );
+          const problemStage = run.progress?.problem_extraction as
+            | { problems_written?: number; worked_examples_written?: number }
+            | undefined;
+          const parts: string[] = [];
+          if (structure) {
+            parts.push(`${structure.chapters_written ?? 0} chapters, ${structure.sections_written ?? 0} sections`);
+          }
+          if (problemStage) {
+            parts.push(`${problemStage.problems_written ?? 0} problems, ${problemStage.worked_examples_written ?? 0} worked examples`);
+          }
+          setSaveStatusText(parts.length ? `Done — ${parts.join(", ")} saved` : "Done.");
           setSavingTextbook(false);
           stopPolling();
         } else if (run.status === "failed") {
@@ -125,11 +131,12 @@ export default function ExtractorPage() {
           setSavingTextbook(false);
           stopPolling();
         } else {
-          setSaveStatusText(
-            run.current_stage === "structure"
-              ? "Identifying chapters and sections…"
-              : "Extracting pages…"
-          );
+          const stageText: Record<string, string> = {
+            structure: "Identifying chapters and sections…",
+            content_extraction: "Extracting explanations and worked examples…",
+            problem_extraction: "Extracting problems…",
+          };
+          setSaveStatusText(stageText[run.current_stage] ?? "Extracting pages…");
         }
       } catch {
         setSaveStatusText("Lost connection while checking save status.");

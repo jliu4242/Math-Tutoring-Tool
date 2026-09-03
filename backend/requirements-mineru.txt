@@ -1,0 +1,24 @@
+# MinerU (ingestion/mineru_extraction.py) -- deliberately NOT in requirements.txt.
+#
+# mineru is invoked via subprocess (its CLI, not a Python import -- see
+# ingestion/mineru_extraction.py's module docstring for why), so it does not need to
+# share this app's venv. Its `pipeline` backend pulls in torch, onnxruntime, and
+# PaddleOCR-family models -- multi-GB, and only relevant to whoever runs ingestion.
+# Keeping it out of requirements.txt keeps the default backend install light for
+# everyone else.
+#
+# Install into whatever environment will run the `mineru` CLI (a separate venv is
+# fine -- only `mineru`, not this backend's own dependencies, needs to be importable
+# there):
+#
+#     pip install -r backend/requirements-mineru.txt
+#
+# Then either let the first real run auto-download models from HuggingFace/ModelScope,
+# or pre-fetch them once:
+#
+#     mineru-models-download
+#
+# If the `mineru` CLI ends up on a different PATH than the one this backend process
+# sees, point at it explicitly with MINERU_CLI_PATH (see .env.example).
+
+mineru[pipeline]

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python -c \"import ast; [ast.parse\\(open\\(f, encoding='utf-8'\\).read\\(\\), f\\) for f in ['ingestion/persistence.py','ingestion/background.py','agents/structure_agent.py','routers/textbooks.py','main.py']]; print\\('syntax OK'\\)\")",
+      "Bash(npx tsc *)",
+      "Bash(supabase migration *)",
+      "Bash(supabase db *)"
+    ]
+  }
+}

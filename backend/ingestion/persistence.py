@@ -8,12 +8,19 @@ than at module level -- importing this module is always safe.
 
 from __future__ import annotations
 
-from typing import Any, Iterable
-
-from .pdf_extraction import PageExtraction
+from typing import Any, Iterable, Protocol
 
 # Supabase rejects very large request bodies; pages carrying full layout JSON add up.
 DEFAULT_BATCH_SIZE = 25
+
+
+class _RowConvertible(Protocol):
+    """write_pages takes pdf_extraction.PageExtraction (line-shaped, the synchronous
+    /ingestion/extract path) or mineru_extraction.PageExtraction (block-shaped, the
+    background /textbooks path) -- either works, since both just need to_row().
+    """
+
+    def to_row(self, source_id: str) -> dict[str, Any]: ...
 
 
 def _client() -> Any:
@@ -81,7 +88,7 @@ def ensure_source(
 
 def write_pages(
     source_id: str,
-    pages: Iterable[PageExtraction],
+    pages: Iterable[_RowConvertible],
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> int:
     """Upsert pages into textbook_pages. Returns how many rows were written.
@@ -188,6 +195,68 @@ def write_sections(chapter_id: str, sections: Iterable[dict[str, Any]]) -> list[
     if not rows:
         return []
     result = client.table("sections").upsert(rows, on_conflict="chapter_id,ordinal").execute()
+    return result.data or []
+
+
+def write_content_blocks(section_id: str, blocks: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Upsert content blocks for one section. Returns the written rows.
+
+    Upsert on (section_id, ordinal) -- content_blocks_section_id_ordinal_key
+    (20260822120100_content_extraction_unique_keys.sql) -- same idempotent-rerun
+    pattern as write_chapters/write_sections.
+    """
+    client = _client()
+    rows = [{**block, "section_id": section_id} for block in blocks]
+    if not rows:
+        return []
+    result = client.table("content_blocks").upsert(rows, on_conflict="section_id,ordinal").execute()
+    return result.data or []
+
+
+def write_problems(
+    textbook_id: str, chapter_id: str | None, section_id: str | None, problems: Iterable[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Upsert problems for one section. Returns the written rows.
+
+    Upsert on (textbook_id, page_number, problem_number) --
+    problems_textbook_page_number_key -- not (section_id, ordinal): section_id is
+    nullable (ARCHITECTURE.md section 19), so it cannot anchor a dedupe key.
+    """
+    client = _client()
+    rows = [
+        {**problem, "textbook_id": textbook_id, "chapter_id": chapter_id, "section_id": section_id}
+        for problem in problems
+    ]
+    if not rows:
+        return []
+    result = (
+        client.table("problems")
+        .upsert(rows, on_conflict="textbook_id,page_number,problem_number")
+        .execute()
+    )
+    return result.data or []
+
+
+def write_worked_examples(
+    textbook_id: str, chapter_id: str | None, section_id: str | None, examples: Iterable[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Upsert worked examples for one section. Returns the written rows.
+
+    Upsert on (textbook_id, page_number, example_number) --
+    worked_examples_textbook_page_number_key -- mirrors write_problems.
+    """
+    client = _client()
+    rows = [
+        {**example, "textbook_id": textbook_id, "chapter_id": chapter_id, "section_id": section_id}
+        for example in examples
+    ]
+    if not rows:
+        return []
+    result = (
+        client.table("worked_examples")
+        .upsert(rows, on_conflict="textbook_id,page_number,example_number")
+        .execute()
+    )
     return result.data or []
 
 

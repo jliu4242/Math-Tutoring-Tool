@@ -15,9 +15,10 @@ a range that is really just a section, or that starts/ends mid-chapter, must be
 rejected rather than silently saved as a fake chapter. Judging that needs two
 things the caller supplies here that plain body text does not carry:
 
-  - heading size (pdf_extraction.py's TextLine.size) so a chapter-level heading can
-    be told apart from a section heading by more than wording alone -- see
-    _format_page_lines.
+  - heading depth (mineru_extraction.py's Block.text_level) so a chapter-level
+    heading can be told apart from a section heading by more than wording alone --
+    see _format_page_blocks. This is a model-assigned signal from MinerU's layout
+    model, not the font-size heuristic this module used before the MinerU swap.
   - a few pages of context immediately outside the requested range, so the model
     can check whether the range actually starts/ends at a chapter transition
     instead of guessing from the requested pages alone, which look the same
@@ -33,12 +34,6 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("LLM_API_KEY", ""))
-
-# A line whose font size is at least this much larger than the page's most common
-# (body-text) size reads as a heading rather than body text. 1.15 tolerates minor
-# rendering noise (e.g. bold variants of the body font reporting a slightly
-# different size) while still catching a genuinely larger heading.
-HEADING_SIZE_MARGIN = 1.15
 
 
 class SectionOut(BaseModel):
@@ -86,39 +81,30 @@ class ChapterValidationError(Exception):
         super().__init__(reason)
 
 
-def _body_size(sizes: list[float]) -> float:
-    """The most common line size on a page -- a stand-in for "body text size"."""
-    counts: dict[float, int] = {}
-    for size in sizes:
-        counts[size] = counts.get(size, 0) + 1
-    return max(counts, key=lambda size: counts[size]) if counts else 0.0
-
-
-def _format_page_lines(page: dict[str, Any]) -> str:
-    """Render a page's text, flagging lines whose font size stands out from the
-    page's body text as probable headings. Falls back to plain raw_text when no
-    line/size data is available (e.g. rows persisted before this field existed).
+def _format_page_blocks(page: dict[str, Any]) -> str:
+    """Render a page's text, flagging blocks MinerU's layout model assigned a
+    text_level to as probable headings. Falls back to plain raw_text when no block
+    data is available (e.g. rows persisted before this field existed).
     """
-    lines = page.get("lines") or None
-    if not lines:
+    blocks = page.get("blocks") or None
+    if not blocks:
         return page.get("raw_text") or ""
 
-    body_size = _body_size([line["size"] for line in lines if line.get("size")])
-    threshold = body_size * HEADING_SIZE_MARGIN
-
     rendered = []
-    for line in lines:
-        text = line.get("text", "")
-        size = line.get("size") or 0.0
-        if body_size and size >= threshold:
-            rendered.append(f"[HEADING size={size:.1f}] {text}")
+    for block in blocks:
+        text = block.get("text", "")
+        if not text:
+            continue
+        level = block.get("text_level")
+        if level:
+            rendered.append(f"[HEADING level={level}] {text}")
         else:
             rendered.append(text)
     return "\n".join(rendered)
 
 
 def _format_pages(pages: list[dict[str, Any]]) -> str:
-    parts = [f"--- PAGE {page['page_number']} ---\n{_format_page_lines(page)}" for page in pages]
+    parts = [f"--- PAGE {page['page_number']} ---\n{_format_page_blocks(page)}" for page in pages]
     return "\n\n".join(parts)
 
 
@@ -127,7 +113,7 @@ def _format_context_pages(pages: list[dict[str, Any]], label: str) -> str:
         return f"(no {label} context -- the requested range touches the edge of the PDF)"
     parts = [
         f"--- {label.upper()} CONTEXT PAGE {page['page_number']} (outside the requested range) ---\n"
-        f"{_format_page_lines(page)}"
+        f"{_format_page_blocks(page)}"
         for page in pages
     ]
     return "\n\n".join(parts)
@@ -202,8 +188,8 @@ def identify_structure(
 ) -> list[ChapterOut]:
     """Identify chapter/section boundaries within [requested_start, requested_end].
 
-    pages: [{"page_number": int, "raw_text": str | None, "lines": [{"text": str,
-    "size": float}, ...] | None}, ...], already extracted. context_before/after are
+    pages: [{"page_number": int, "raw_text": str | None, "blocks": [{"text": str,
+    "text_level": int | None}, ...] | None}, ...], already extracted. context_before/after are
     the same shape, covering a few pages immediately outside the requested range --
     context only, never reported as structure.
 
@@ -226,11 +212,12 @@ of several consecutive chapters) ends. Set it to false, with a one-sentence "rea
   - the range ends partway through a chapter (the AFTER CONTEXT below shows the same
     chapter continuing right after the range, with no new chapter heading in between).
 
-Lines are marked "[HEADING size=N]" when their font is noticeably larger than the page's
-body text -- chapter titles are reliably the single largest heading size in a chapter;
-section titles are consistently smaller. Use this, not just wording, to tell a chapter
-heading apart from a section heading (a heading need not literally contain the word
-"Chapter" to be one).
+Blocks are marked "[HEADING level=N]" when MinerU's layout model assigned them a heading
+depth -- level 1 is the most prominent heading on the page, and increasing numbers are
+progressively deeper. Chapter titles are reliably the shallowest (lowest-numbered) heading
+level in a chapter; section titles are consistently a level or more deeper. Use this, not
+just wording, to tell a chapter heading apart from a section heading (a heading need not
+literally contain the word "Chapter" to be one).
 
 If is_valid_chapter_range is true, identify for the requested range only:
 - Each chapter that appears in this range: its printed number (if any), title, the page range it spans, and its sections.
