@@ -104,6 +104,13 @@ class Block:
     text_format: str | None = None  # "latex" on equation blocks
     sub_type: str | None = None  # e.g. list "sub_type": ordinary vs reference-style
     bbox: tuple[float, float, float, float] | None = None
+    # Position among ALL kept entries on the page (blocks and images share one
+    # counter), unlike `ordinal` which is tracked per-type so page.blocks stays a
+    # contiguous 0..N-1 sequence (test_blocks_carry_bbox_and_order relies on this).
+    # problem_extraction needs this shared counter to tell whether a figure fell
+    # between problem 12's block and problem 13's -- `ordinal` alone can't answer
+    # that once blocks and images are interleaved back into one reading-order stream.
+    page_position: int | None = None
 
     def to_json(self) -> dict[str, Any]:
         row: dict[str, Any] = {"ordinal": self.ordinal, "type": self.type, "text": self.text}
@@ -115,6 +122,8 @@ class Block:
             row["sub_type"] = self.sub_type
         if self.bbox is not None:
             row["bbox"] = list(self.bbox)
+        if self.page_position is not None:
+            row["page_position"] = self.page_position
         return row
 
 
@@ -130,6 +139,13 @@ class ImageBlock:
     img_path: str | None
     caption: str | None
     bbox: tuple[float, float, float, float] | None = None
+    page_position: int | None = None  # see Block.page_position
+    # The actual image bytes, read off disk while output_dir still exists (see
+    # _read_image_bytes) -- MinerU's own temp dir is rmtree'd once extract_pages
+    # finishes, so this is the only chance to capture them. None when the file
+    # MinerU recorded in img_path could not be found. Never put in to_json(): this
+    # is a debug/layout JSONB column, not a place for raw binary.
+    image_bytes: bytes | None = None
 
     def to_json(self) -> dict[str, Any]:
         row: dict[str, Any] = {"ordinal": self.ordinal, "type": self.type}
@@ -139,6 +155,8 @@ class ImageBlock:
             row["caption"] = self.caption
         if self.bbox is not None:
             row["bbox"] = list(self.bbox)
+        if self.page_position is not None:
+            row["page_position"] = self.page_position
         return row
 
 
@@ -252,15 +270,38 @@ def _true_page_number(entry: dict[str, Any], start_page: int) -> int:
     return int(entry["page_idx"]) + start_page
 
 
+def _read_image_bytes(base_dir: Path, img_path: str) -> bytes | None:
+    """Read a figure crop's bytes off disk, before extract_pages' `finally` rmtree's
+    output_dir out from under us -- this is the only point in the pipeline where the
+    file MinerU wrote still exists. img_path is relative to the directory
+    content_list.json itself lives in (MinerU's own convention, typically
+    "images/<hash>.jpg"); if that exact join doesn't resolve, fall back to searching
+    output_dir for a file with the same name rather than giving up, since the exact
+    nesting has not been pinned down against every MinerU version.
+    """
+    candidate = base_dir / img_path
+    if not candidate.exists():
+        matches = list(base_dir.rglob(Path(img_path).name))
+        candidate = matches[0] if matches else None
+    if candidate is None or not candidate.exists():
+        return None
+    try:
+        return candidate.read_bytes()
+    except OSError:
+        return None
+
+
 def _parse_content_list(content_list_path: Path, start_page: int) -> dict[int, dict[str, list]]:
     """Group content_list.json entries by true page number into {"blocks": [...],
     "images": [...]} buckets, dropping table-typed entries per DROPPED_BLOCK_TYPES.
     """
     raw = json.loads(content_list_path.read_text(encoding="utf-8"))
+    base_dir = content_list_path.parent
 
     by_page: dict[int, dict[str, list]] = {}
     block_ordinal_on_page: dict[int, int] = {}
     image_ordinal_on_page: dict[int, int] = {}
+    position_on_page: dict[int, int] = {}
 
     for entry in raw:
         entry_type = entry.get("type", "")
@@ -270,18 +311,23 @@ def _parse_content_list(content_list_path: Path, start_page: int) -> dict[int, d
         page_number = _true_page_number(entry, start_page)
         bucket = by_page.setdefault(page_number, {"blocks": [], "images": []})
         bbox = tuple(entry["bbox"]) if entry.get("bbox") else None
+        position = position_on_page.get(page_number, 0)
+        position_on_page[page_number] = position + 1
 
         if entry_type in IMAGE_BLOCK_TYPES:
             ordinal = image_ordinal_on_page.get(page_number, 0)
             image_ordinal_on_page[page_number] = ordinal + 1
             caption_list = entry.get("image_caption") or entry.get("chart_caption") or []
+            img_path = entry.get("img_path")
             bucket["images"].append(
                 ImageBlock(
                     ordinal=ordinal,
                     type=entry_type,
-                    img_path=entry.get("img_path"),
+                    img_path=img_path,
                     caption=" ".join(caption_list) if caption_list else None,
                     bbox=bbox,
+                    page_position=position,
+                    image_bytes=_read_image_bytes(base_dir, img_path) if img_path else None,
                 )
             )
             continue
@@ -297,6 +343,7 @@ def _parse_content_list(content_list_path: Path, start_page: int) -> dict[int, d
                 text_format=entry.get("text_format"),
                 sub_type=entry.get("sub_type"),
                 bbox=bbox,
+                page_position=position,
             )
         )
 

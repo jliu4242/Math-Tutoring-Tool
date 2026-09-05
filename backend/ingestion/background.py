@@ -37,7 +37,7 @@ from agents.structure_agent import (
     identify_structure,
 )
 from ingestion import content_extraction, mineru_extraction, persistence, problem_extraction, worked_example_extraction
-from ingestion.mineru_extraction import Block, PageExtraction
+from ingestion.mineru_extraction import Block, ImageBlock, PageExtraction
 
 # Pages of surrounding text handed to the structure LLM so it can tell "this range
 # starts/ends at a real chapter boundary" from "this range is a fragment of a
@@ -80,6 +80,27 @@ def _section_page_blocks(
     for page in pages:
         if page_start <= page.page_number <= page_end:
             result.extend((page.page_number, block) for block in page.blocks)
+    return result
+
+
+def _section_page_items(
+    pages: list[PageExtraction], page_start: int | None, page_end: int | None
+) -> list[tuple[int, Block | ImageBlock]]:
+    """Like _section_page_blocks, but also interleaves each page's images back in at
+    their real reading-order position (Block/ImageBlock.page_position) rather than
+    grouping all of a page's images after all of its blocks. problem_extraction needs
+    that real interleaving to tell which problem a figure visually falls under --
+    dropping images here (as _section_page_blocks does) or appending them after every
+    block would make every figure look like it came after the whole page's text.
+    """
+    if page_start is None or page_end is None:
+        return []
+    result: list[tuple[int, Block | ImageBlock]] = []
+    for page in pages:
+        if page_start <= page.page_number <= page_end:
+            items: list[Block | ImageBlock] = [*page.blocks, *page.images]
+            items.sort(key=lambda item: item.page_position if item.page_position is not None else -1)
+            result.extend((page.page_number, item) for item in items)
     return result
 
 
@@ -189,6 +210,7 @@ def run_textbook_ingestion(
             content_blocks_written = 0
             problems_written = 0
             worked_examples_written = 0
+            problem_images_written = 0
 
             try:
                 for chapter in chapters:
@@ -218,16 +240,36 @@ def run_textbook_ingestion(
                         section_blocks = _section_page_blocks(
                             requested_pages, section_row.get("page_start"), section_row.get("page_end")
                         )
+                        section_items = _section_page_items(
+                            requested_pages, section_row.get("page_start"), section_row.get("page_end")
+                        )
 
                         content_rows = content_extraction.extract_content_blocks(section_blocks)
                         written_content = persistence.write_content_blocks(section_row["id"], content_rows)
                         content_blocks_written += len(written_content)
 
-                        problem_rows = problem_extraction.extract_problems(section_blocks)
+                        # extract_problems' rows carry a caller-only "images" key
+                        # (the figures encountered while that problem was open) --
+                        # popped off here, keyed by ordinal, since `problems` has no
+                        # images column of its own; matched back up after the write
+                        # below via each written row's own ordinal (write_problems'
+                        # upsert response, not list position, since Supabase doesn't
+                        # guarantee the response preserves input order).
+                        problem_rows = problem_extraction.extract_problems(section_items)
+                        images_by_ordinal = {row["ordinal"]: row.pop("images") for row in problem_rows}
                         written_problems = persistence.write_problems(
                             textbook_id, chapter_id, section_row["id"], problem_rows
                         )
                         problems_written += len(written_problems)
+
+                        for written_problem in written_problems:
+                            problem_images = images_by_ordinal.get(written_problem["ordinal"], [])
+                            if not problem_images:
+                                continue
+                            written_images = persistence.write_problem_images(
+                                textbook_id, written_problem["id"], problem_images
+                            )
+                            problem_images_written += len(written_images)
 
                         example_rows = worked_example_extraction.extract_worked_examples(section_blocks)
                         written_examples = persistence.write_worked_examples(
@@ -262,6 +304,7 @@ def run_textbook_ingestion(
                 "status": "done",
                 "problems_written": problems_written,
                 "worked_examples_written": worked_examples_written,
+                "problem_images_written": problem_images_written,
             }
 
         persistence.set_run_status(

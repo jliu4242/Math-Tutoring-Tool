@@ -38,7 +38,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .mineru_extraction import NOISE_TEXT_TYPES, Block
+from .mineru_extraction import NOISE_TEXT_TYPES, Block, ImageBlock
 
 # Subsection headings (McGraw-Hill's fixed three-part-lesson structure) that mark the
 # start of graded practice content, as opposed to Investigate/Reflect and
@@ -77,9 +77,20 @@ def _match_item_start(text: str) -> tuple[str, str] | None:
     return None
 
 
-def extract_problems(page_blocks: list[tuple[int, Block]]) -> list[dict[str, Any]]:
+def extract_problems(page_items: list[tuple[int, Block | ImageBlock]]) -> list[dict[str, Any]]:
     """Build problems rows (minus textbook_id/chapter_id/section_id, added by the
-    caller on write) from a section's (page_number, Block) stream in reading order.
+    caller on write) from a section's (page_number, Block | ImageBlock) stream in
+    reading order -- background.py interleaves each page's images back in at their
+    real position (Block/ImageBlock.page_position) before calling this.
+
+    Each row carries an extra "images" key: a list of (page_number, ImageBlock)
+    tuples for whatever problem was open when that figure was encountered. This is
+    not a problems column -- the caller must pop it off before handing the row to
+    persistence.write_problems -- it exists so a figure ends up attached to the
+    problem it visually illustrates rather than needing a second, separately
+    position-tracking pass over the same stream. An image with no open problem (one
+    sitting in the practice tier's own leading heading, say) is dropped, same as
+    stray text below.
     """
     rows: list[dict[str, Any]] = []
     in_practice = False
@@ -88,9 +99,10 @@ def extract_problems(page_blocks: list[tuple[int, Block]]) -> list[dict[str, Any
     current_page: int | None = None
     current_start_block: Block | None = None
     parts: list[str] = []
+    images: list[tuple[int, ImageBlock]] = []
 
     def flush() -> None:
-        nonlocal current_number, current_page, current_start_block, parts
+        nonlocal current_number, current_page, current_start_block, parts, images
         if current_number is not None:
             body = "\n".join(part for part in parts if part.strip()).strip()
             if body:
@@ -107,11 +119,20 @@ def extract_problems(page_blocks: list[tuple[int, Block]]) -> list[dict[str, Any
                             "block_ordinal_on_page": current_start_block.ordinal,
                             "bbox": list(current_start_block.bbox) if current_start_block.bbox else None,
                         },
+                        "images": images,
                     }
                 )
-        current_number, current_page, current_start_block, parts = None, None, None, []
+        current_number, current_page, current_start_block, parts, images = None, None, None, [], []
 
-    for page_number, block in page_blocks:
+    for page_number, item in page_items:
+        if isinstance(item, ImageBlock):
+            if current_number is not None:
+                images.append((page_number, item))
+            # else: a figure with no open problem to attach to -- dropped, same
+            # reasoning as stray text below.
+            continue
+
+        block = item
         if block.type in NOISE_TEXT_TYPES:
             continue
         text = block.text.strip()

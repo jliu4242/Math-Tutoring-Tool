@@ -8,10 +8,18 @@ than at module level -- importing this module is always safe.
 
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
 from typing import Any, Iterable, Protocol
 
 # Supabase rejects very large request bodies; pages carrying full layout JSON add up.
 DEFAULT_BATCH_SIZE = 25
+
+# Private bucket (20260905120000_problem_images.sql) -- no public access, no anon-key
+# read policy. The only way to see an image is a signed URL minted on request (see
+# create_signed_image_url), which is what makes "private" actually mean something
+# here rather than just being a label on an otherwise-public bucket.
+IMAGE_BUCKET = "textbook-images"
 
 
 class _RowConvertible(Protocol):
@@ -258,6 +266,75 @@ def write_worked_examples(
         .execute()
     )
     return result.data or []
+
+
+def write_problem_images(
+    textbook_id: str, problem_id: str, images: Iterable[tuple[int, Any]]
+) -> list[dict[str, Any]]:
+    """Upload each figure's captured bytes to the private textbook-images bucket and
+    upsert its problem_images row. Returns the written rows.
+
+    `images` is (page_number, mineru_extraction.ImageBlock) pairs -- kept untyped
+    (Any) here the same way write_pages avoids importing pdf_extraction/
+    mineru_extraction at module level (module docstring): this module stays
+    importable without either extraction stage.
+
+    Upsert on (problem_id, ordinal) -- problem_images_problem_id_ordinal_key
+    (20260905120000_problem_images.sql) -- same idempotent-rerun pattern as every
+    other write_* here: re-running extraction over the same pages replaces a
+    problem's images instead of duplicating them. An image with no captured bytes
+    (mineru_extraction couldn't find the file MinerU recorded) is skipped rather
+    than writing a row that points at nothing in storage.
+    """
+    client = _client()
+    rows: list[dict[str, Any]] = []
+
+    for ordinal, (page_number, image) in enumerate(images):
+        if not image.image_bytes:
+            continue
+        suffix = Path(image.img_path).suffix if image.img_path else ""
+        storage_path = f"{textbook_id}/{problem_id}/{ordinal}{suffix or '.jpg'}"
+        content_type = mimetypes.guess_type(storage_path)[0] or "image/jpeg"
+
+        client.storage.from_(IMAGE_BUCKET).upload(
+            storage_path,
+            image.image_bytes,
+            {"content-type": content_type, "upsert": "true"},
+        )
+        rows.append(
+            {
+                "problem_id": problem_id,
+                "ordinal": ordinal,
+                "storage_path": storage_path,
+                "caption": image.caption,
+                "source_ref": {
+                    "page_number": page_number,
+                    "block_ordinal_on_page": image.ordinal,
+                    "bbox": list(image.bbox) if image.bbox else None,
+                },
+            }
+        )
+
+    if not rows:
+        return []
+    result = (
+        client.table("problem_images")
+        .upsert(rows, on_conflict="problem_id,ordinal")
+        .execute()
+    )
+    return result.data or []
+
+
+def create_signed_image_url(storage_path: str, expires_in: int = 3600) -> str | None:
+    """Mint a temporary signed URL for a private-bucket image. The bucket has no
+    public access (module docstring), so a bare storage_path is useless to a
+    browser -- display always goes through this. expires_in defaults to 1 hour;
+    callers needing a longer-lived link can pass a larger value. Returns None if
+    Supabase reports no URL (e.g. the object was deleted out from under the row).
+    """
+    client = _client()
+    result = client.storage.from_(IMAGE_BUCKET).create_signed_url(storage_path, expires_in)
+    return result.get("signedURL") or result.get("signedUrl")
 
 
 def link_pages_to_section(
