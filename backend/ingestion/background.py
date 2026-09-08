@@ -1,22 +1,28 @@
 """Background orchestration for POST /textbooks (ARCHITECTURE.md section 5).
 
 The BackgroundTasks target scheduled by the router. Runs mineru_extraction (mechanical,
-MinerU-backed), then structure (LLM-based), then content_extraction/problem_extraction
-(mechanical, MinerU-typed-block-based), updating ingestion_runs between stages so the
+MinerU-backed), then structure (LLM-based), then per section: concept_extraction
+(LLM-based, independent of the other two -- see run_concept_extraction_for_section),
+content_extraction/problem_extraction (mechanical, MinerU-typed-block-based), then
+variation_clustering (LLM-based, depends on both concept_extraction and
+problem_extraction having already run for that section -- see
+run_variation_clustering_for_section), updating ingestion_runs between stages so the
 UI can poll progress instead of the job being a black box.
 
-Content/problem/worked-example extraction only run when structure was actually
-identified *this* call -- when structure_already_exists short-circuits the structure
-stage, everything downstream of it is skipped too, matching how the pre-MinerU version
-of this module already treated a structure-skip as terminal for that call. Re-deriving
-content/problems against pre-existing structure from an earlier run is not something
-this pipeline does; it would need to read sections back from persistence rather than
-use the ones just written, and is out of scope for this swap.
+Content/problem/worked-example/variation-clustering extraction only run when
+structure was actually identified *this* call -- when structure_already_exists
+short-circuits the structure stage, everything downstream of it is skipped too,
+matching how the pre-MinerU version of this module already treated a structure-skip
+as terminal for that call. Re-deriving content/problems against pre-existing
+structure from an earlier run is not something this pipeline does; it would need to
+read sections back from persistence rather than use the ones just written, and is out
+of scope for this swap.
 
-A content_extraction/problem_extraction failure, after structure already succeeded,
-still flips the whole run to status="failed" -- a run without problems is not "ready"
-for what this project is actually for, so ingestion_runs.status=completed keeps
-meaning what a caller polling /textbooks/runs/{run_id} would expect it to mean.
+A content_extraction/problem_extraction/variation_clustering failure, after structure
+already succeeded, still flips the whole run to status="failed" -- a run without
+problems is not "ready" for what this project is actually for, so
+ingestion_runs.status=completed keeps meaning what a caller polling
+/textbooks/runs/{run_id} would expect it to mean.
 
 Deliberately a plain `def`, not `async def`: Starlette runs sync BackgroundTasks
 callables via run_in_threadpool and awaits async ones directly. mineru_extraction
@@ -31,11 +37,13 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from agents.concept_agent import identify_concepts
 from agents.structure_agent import (
     ChapterValidationError,
     StructureIdentificationError,
     identify_structure,
 )
+from agents.variation_clustering import cluster_variations
 from ingestion import content_extraction, mineru_extraction, persistence, problem_extraction, worked_example_extraction
 from ingestion.mineru_extraction import Block, ImageBlock, PageExtraction
 
@@ -104,6 +112,74 @@ def _section_page_items(
     return result
 
 
+def run_concept_extraction_for_section(section_id: str) -> list[dict[str, Any]]:
+    """Identify and persist concepts for one section, given only its id.
+
+    Self-contained: reads the section/chapter title and this section's
+    already-extracted pages straight from Supabase (persistence.link_pages_to_section
+    must have already run so textbook_pages.section_id is set) rather than depending
+    on this module's in-memory extraction state. That makes it independently callable
+    -- a future POST /sections/{id}/concepts route, or a backfill script -- without
+    re-running ingestion, not just a step wired into this one pipeline's loop.
+    """
+    section = persistence.get_section_with_chapter(section_id)
+    pages = persistence.get_section_pages(section_id)
+    concept_rows = identify_concepts(
+        chapter_title=section["chapter_title"],
+        section_title=section["title"],
+        pages=pages,
+        page_start=section.get("page_start"),
+        page_end=section.get("page_end"),
+    )
+    return persistence.write_section_concepts(section_id, concept_rows)
+
+
+def run_variation_clustering_for_section(section_id: str) -> list[dict[str, Any]]:
+    """Cluster and persist draft problem_concepts tagging for one section, given only
+    its id (ARCHITECTURE.md section 10.2 / IMPLEMENTATION-PLAN.md Step 4c).
+
+    Self-contained like run_concept_extraction_for_section: reads this section's
+    already-written concepts and problems straight from Supabase (concept_extraction
+    and problem_extraction must have already run for this section) rather than
+    depending on this module's in-memory extraction state. Requires both -- an empty
+    result if either hasn't run yet, since variation_clustering.cluster_variations
+    itself no-ops when either input is empty.
+    """
+    section = persistence.get_section_with_chapter(section_id)
+    concepts = persistence.get_section_concepts(section_id)
+    problems = persistence.get_section_problems(section_id)
+
+    groupings = cluster_variations(
+        chapter_title=section["chapter_title"],
+        section_title=section["title"],
+        concepts=concepts,
+        problems=problems,
+    )
+
+    concept_id_by_slug = {c["slug"]: c["concept_id"] for c in concepts}
+    problem_id_by_number = {p["problem_number"]: p["id"] for p in problems}
+
+    rows: list[dict[str, Any]] = []
+    for grouping in groupings:
+        concept_id = concept_id_by_slug.get(grouping["concept_slug"])
+        problem_id = problem_id_by_number.get(grouping["representative_problem_number"])
+        if concept_id is None or problem_id is None:
+            continue
+        rows.append(
+            {
+                "problem_id": problem_id,
+                "concept_id": concept_id,
+                "relationship_type": "primary",
+                "confidence": grouping["confidence"],
+                "variation_key": grouping["variation_key"],
+                "is_representative": True,
+            }
+        )
+
+    problem_ids = [p["id"] for p in problems]
+    return persistence.write_problem_concepts(problem_ids, rows)
+
+
 def run_textbook_ingestion(
     pdf_path: str,
     title: str,
@@ -112,10 +188,20 @@ def run_textbook_ingestion(
     run_id: str,
     textbook_id: str,
     source_id: str,
+    force_reindex: bool = False,
 ) -> None:
     """Never raises: an exception escaping a BackgroundTasks callback is not
     surfaced to the client and may only show up as a log line, so every failure
     path here writes onto ingestion_runs instead.
+
+    force_reindex bypasses structure_already_exists' overlap check -- the only way
+    to re-run content/problem/worked-example/problem_image/variation_clustering
+    extraction over a chapter that was already structured by an earlier call (see
+    this module's docstring: that stage is skipped entirely otherwise). Meant for "I
+    fixed a bug in one of those extraction stages, now re-derive this chapter's
+    downstream rows" -- it still
+    re-runs structure identification (another LLM call), not just the mechanical
+    stages, since chapters/sections have to exist again to attach anything to.
     """
     progress: dict[str, Any] = {}
     try:
@@ -123,7 +209,9 @@ def run_textbook_ingestion(
             run_id, status="processing", current_stage="pdf_extraction", started_at=_now()
         )
 
-        skip_structure = persistence.structure_already_exists(textbook_id, start_page, end_page)
+        skip_structure = not force_reindex and persistence.structure_already_exists(
+            textbook_id, start_page, end_page
+        )
 
         # One MinerU pass covers everything this call needs -- the officially
         # requested range, plus (when structure will actually run) a little padding
@@ -211,6 +299,8 @@ def run_textbook_ingestion(
             problems_written = 0
             worked_examples_written = 0
             problem_images_written = 0
+            concepts_written = 0
+            problem_concepts_written = 0
 
             try:
                 for chapter in chapters:
@@ -237,6 +327,9 @@ def run_textbook_ingestion(
                             section_row.get("page_end"),
                         )
 
+                        written_concepts = run_concept_extraction_for_section(section_row["id"])
+                        concepts_written += len(written_concepts)
+
                         section_blocks = _section_page_blocks(
                             requested_pages, section_row.get("page_start"), section_row.get("page_end")
                         )
@@ -262,10 +355,13 @@ def run_textbook_ingestion(
                         )
                         problems_written += len(written_problems)
 
+                        # Called for every problem, even one with zero images this
+                        # run: write_problem_images always clears whatever was
+                        # previously written for it first (its own docstring), which
+                        # is what keeps a force_reindex that stops matching an image
+                        # to a problem from leaving that problem's old image behind.
                         for written_problem in written_problems:
                             problem_images = images_by_ordinal.get(written_problem["ordinal"], [])
-                            if not problem_images:
-                                continue
                             written_images = persistence.write_problem_images(
                                 textbook_id, written_problem["id"], problem_images
                             )
@@ -276,6 +372,13 @@ def run_textbook_ingestion(
                             textbook_id, chapter_id, section_row["id"], example_rows
                         )
                         worked_examples_written += len(written_examples)
+
+                        # Requires both concepts (above) and problems (just written)
+                        # for this section -- see run_variation_clustering_for_section.
+                        written_problem_concepts = run_variation_clustering_for_section(
+                            section_row["id"]
+                        )
+                        problem_concepts_written += len(written_problem_concepts)
             except Exception as error:
                 progress["structure"] = {
                     "status": "done",
@@ -305,6 +408,13 @@ def run_textbook_ingestion(
                 "problems_written": problems_written,
                 "worked_examples_written": worked_examples_written,
                 "problem_images_written": problem_images_written,
+            }
+            persistence.set_run_status(run_id, current_stage="concept_extraction", progress=progress)
+            progress["concept_extraction"] = {"status": "done", "concepts_written": concepts_written}
+            persistence.set_run_status(run_id, current_stage="variation_clustering", progress=progress)
+            progress["variation_clustering"] = {
+                "status": "done",
+                "problem_concepts_written": problem_concepts_written,
             }
 
         persistence.set_run_status(

@@ -206,6 +206,192 @@ def write_sections(chapter_id: str, sections: Iterable[dict[str, Any]]) -> list[
     return result.data or []
 
 
+def get_section_with_chapter(section_id: str) -> dict[str, Any]:
+    """Return {id, title, page_start, page_end, chapter_title} for one section, via
+    a single query embedding the parent chapter's title -- the standalone
+    by-section-id concept extraction entrypoint (background.py
+    run_concept_extraction_for_section) needs both without depending on any
+    in-memory ingestion state.
+    """
+    client = _client()
+    result = (
+        client.table("sections")
+        .select("id,title,page_start,page_end,chapters(title)")
+        .eq("id", section_id)
+        .single()
+        .execute()
+    )
+    row = dict(result.data)
+    chapter = row.pop("chapters", None) or {}
+    row["chapter_title"] = chapter.get("title")
+    return row
+
+
+def get_section_pages(section_id: str) -> list[dict[str, Any]]:
+    """Return this section's already-extracted pages as [{"page_number": int,
+    "blocks": [...]}, ...], ordered by page_number.
+
+    Reads textbook_pages.layout -- MinerU's blocks, repurposed onto that column by
+    mineru_extraction.PageExtraction.to_row -- keyed by section_id, which
+    link_pages_to_section must have already set for these rows to be found.
+    """
+    client = _client()
+    result = (
+        client.table("textbook_pages")
+        .select("page_number,layout")
+        .eq("section_id", section_id)
+        .order("page_number")
+        .execute()
+    )
+    return [
+        {"page_number": row["page_number"], "blocks": row.get("layout") or []}
+        for row in (result.data or [])
+    ]
+
+
+def write_section_concepts(section_id: str, concepts: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Replace this section's concept links wholesale: delete whatever
+    section_concepts rows previously existed for it, then upsert-and-link the
+    current set. Returns the written section_concepts rows (empty if `concepts` is
+    empty, which is a valid call -- it just clears stale links).
+
+    Delete-then-write rather than a plain upsert -- same reasoning as
+    write_problem_images: an upsert on (section_id, concept_id) only ever touches
+    the concept_ids present in *this* call, so a concept a re-run no longer
+    identifies (e.g. after a prompt change that re-splits one broad concept into
+    several narrower ones) would otherwise stay linked forever instead of being
+    replaced. Deleting first makes "this section's concepts" mean exactly what this
+    call says, every time.
+
+    The `concepts` table itself is never touched by the delete -- canonical concept
+    rows are shared across sections/textbooks (ARCHITECTURE.md section 21) and are
+    only ever upserted (find-or-create), never removed here.
+    """
+    client = _client()
+    client.table("section_concepts").delete().eq("section_id", section_id).execute()
+
+    concepts = list(concepts)
+    if not concepts:
+        return []
+
+    concept_rows = [
+        {
+            "slug": concept["slug"],
+            "canonical_name": concept["canonical_name"],
+            "description": concept.get("description") or None,
+        }
+        for concept in concepts
+    ]
+    written_concepts = (
+        client.table("concepts").upsert(concept_rows, on_conflict="slug").execute().data or []
+    )
+    concept_id_by_slug = {row["slug"]: row["id"] for row in written_concepts}
+
+    section_concept_rows = [
+        {
+            "section_id": section_id,
+            "concept_id": concept_id_by_slug[concept["slug"]],
+            "local_name": concept.get("local_name"),
+            "ordinal": concept.get("ordinal"),
+        }
+        for concept in concepts
+        if concept["slug"] in concept_id_by_slug
+    ]
+    if not section_concept_rows:
+        return []
+    result = (
+        client.table("section_concepts")
+        .upsert(section_concept_rows, on_conflict="section_id,concept_id")
+        .execute()
+    )
+    return result.data or []
+
+
+def get_section_concepts(section_id: str) -> list[dict[str, Any]]:
+    """Return this section's already-identified concepts as [{"concept_id", "slug",
+    "canonical_name", "local_name"}, ...], ordered by ordinal.
+
+    Reads section_concepts joined with concepts -- section_concepts alone (unlike
+    write_section_concepts' input rows) doesn't carry slug/canonical_name, so
+    variation clustering's standalone-by-section-id entrypoint
+    (background.py run_variation_clustering_for_section) needs this join to
+    reconstruct what identify_concepts originally produced.
+    """
+    client = _client()
+    result = (
+        client.table("section_concepts")
+        .select("concept_id,local_name,ordinal,concepts(slug,canonical_name)")
+        .eq("section_id", section_id)
+        .order("ordinal")
+        .execute()
+    )
+    rows = []
+    for row in result.data or []:
+        concept = row.pop("concepts", None) or {}
+        rows.append(
+            {
+                "concept_id": row["concept_id"],
+                "slug": concept.get("slug"),
+                "canonical_name": concept.get("canonical_name"),
+                "local_name": row.get("local_name") or concept.get("canonical_name"),
+            }
+        )
+    return rows
+
+
+def get_section_problems(section_id: str) -> list[dict[str, Any]]:
+    """Return this section's already-extracted raw problems as [{"id",
+    "problem_number", "body_plain"}, ...], ordered by ordinal -- the read-back half
+    of write_problems, for the same standalone-by-section-id reason as
+    get_section_concepts.
+    """
+    client = _client()
+    result = (
+        client.table("problems")
+        .select("id,problem_number,body_plain")
+        .eq("section_id", section_id)
+        .order("ordinal")
+        .execute()
+    )
+    return result.data or []
+
+
+def write_problem_concepts(
+    problem_ids: Iterable[str], rows: Iterable[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Replace the draft problem_concepts rows for a set of problems wholesale:
+    delete whatever rows previously existed for any of `problem_ids`, then upsert the
+    current set. Returns the written rows (empty if `rows` is empty, which is a valid
+    call -- it just clears stale draft tags).
+
+    Delete-then-write rather than a plain upsert -- same reasoning as
+    write_section_concepts: an upsert on (problem_id, concept_id) only ever touches
+    the pairs present in *this* call, so a representative a re-run no longer chooses
+    (a prompt change re-draws a variation boundary, say) would otherwise stay tagged
+    forever instead of being replaced. `problem_ids` is every problem in the section
+    being re-clustered, not just the ones in `rows`, so a problem that lost its
+    representative status this run is actually untagged rather than left stale.
+
+    Non-representative problems are never passed here at all (variation_clustering.py
+    only reports representatives), so this only ever writes is_representative=true
+    rows -- consistent with ARCHITECTURE.md section 10.2.
+    """
+    client = _client()
+    problem_ids = list(problem_ids)
+    if problem_ids:
+        client.table("problem_concepts").delete().in_("problem_id", problem_ids).execute()
+
+    rows = list(rows)
+    if not rows:
+        return []
+    result = (
+        client.table("problem_concepts")
+        .upsert(rows, on_conflict="problem_id,concept_id")
+        .execute()
+    )
+    return result.data or []
+
+
 def write_content_blocks(section_id: str, blocks: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Upsert content blocks for one section. Returns the written rows.
 
@@ -268,27 +454,45 @@ def write_worked_examples(
     return result.data or []
 
 
+def _delete_problem_images(client: Any, problem_id: str) -> None:
+    """Remove every existing problem_images row (and its storage object) for
+    problem_id. write_problem_images calls this before writing the current set --
+    see its docstring for why an upsert alone isn't enough here.
+    """
+    existing = (
+        client.table("problem_images").select("storage_path").eq("problem_id", problem_id).execute()
+    )
+    paths = [row["storage_path"] for row in (existing.data or [])]
+    if paths:
+        client.storage.from_(IMAGE_BUCKET).remove(paths)
+    client.table("problem_images").delete().eq("problem_id", problem_id).execute()
+
+
 def write_problem_images(
     textbook_id: str, problem_id: str, images: Iterable[tuple[int, Any]]
 ) -> list[dict[str, Any]]:
-    """Upload each figure's captured bytes to the private textbook-images bucket and
-    upsert its problem_images row. Returns the written rows.
+    """Replace problem_id's images wholesale: delete whatever was previously written
+    for it, then upload+write the current set. Returns the written rows (empty if
+    `images` is empty, which is a valid call -- it just clears stale rows).
 
     `images` is (page_number, mineru_extraction.ImageBlock) pairs -- kept untyped
     (Any) here the same way write_pages avoids importing pdf_extraction/
     mineru_extraction at module level (module docstring): this module stays
     importable without either extraction stage.
 
-    Upsert on (problem_id, ordinal) -- problem_images_problem_id_ordinal_key
-    (20260905120000_problem_images.sql) -- same idempotent-rerun pattern as every
-    other write_* here: re-running extraction over the same pages replaces a
-    problem's images instead of duplicating them. An image with no captured bytes
-    (mineru_extraction couldn't find the file MinerU recorded) is skipped rather
-    than writing a row that points at nothing in storage.
+    Delete-then-insert rather than upsert: with force_reindex (background.py), a
+    problem's image count can shrink between runs (a fixed matching bug now attaches
+    2 images instead of 3, say). An upsert on (problem_id, ordinal) only ever touches
+    the ordinals present in *this* call, so the old ordinal=2 row -- and its storage
+    object -- would otherwise be orphaned forever instead of being replaced. Deleting
+    first makes "this problem's images" mean exactly what this call says, every time.
+    An image with no captured bytes (mineru_extraction couldn't find the file MinerU
+    recorded) is skipped rather than writing a row that points at nothing in storage.
     """
     client = _client()
-    rows: list[dict[str, Any]] = []
+    _delete_problem_images(client, problem_id)
 
+    rows: list[dict[str, Any]] = []
     for ordinal, (page_number, image) in enumerate(images):
         if not image.image_bytes:
             continue
@@ -317,11 +521,7 @@ def write_problem_images(
 
     if not rows:
         return []
-    result = (
-        client.table("problem_images")
-        .upsert(rows, on_conflict="problem_id,ordinal")
-        .execute()
-    )
+    result = client.table("problem_images").insert(rows).execute()
     return result.data or []
 
 

@@ -79,6 +79,7 @@ async def save_textbook(
     end_page: Optional[int] = Form(None),
     edition: Optional[str] = Form(None),
     publisher: Optional[str] = Form(None),
+    force_reindex: bool = Form(False),
 ) -> SaveTextbookResponse:
     content = await file.read()
     if not content:
@@ -159,6 +160,7 @@ async def save_textbook(
         run_id,
         textbook_id,
         source_id,
+        force_reindex,
     )
 
     return SaveTextbookResponse(
