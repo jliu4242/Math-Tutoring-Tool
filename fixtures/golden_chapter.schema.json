@@ -160,6 +160,27 @@
       }
     },
 
+    "variations": {
+      "type": "array",
+      "description": "Ground truth for Step 4c (ARCHITECTURE.md section 10.2): per section, problems grouped by concept, then by variation, with one representative per variation. A problem may appear under more than one concept.",
+      "items": {
+        "type": "object",
+        "required": ["section_key", "concept_slug", "variation_key", "member_problem_keys", "representative_problem_key"],
+        "additionalProperties": false,
+        "properties": {
+          "section_key": { "type": "string" },
+          "concept_slug": { "type": "string" },
+          "variation_key": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "member_problem_keys": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "representative_problem_key": {
+            "type": "string",
+            "description": "Must be one of member_problem_keys. Any member is a defensible representative, so a diff should compare groupings, not demand this exact pick."
+          },
+          "note": { "type": ["string", "null"] }
+        }
+      }
+    },
+
     "expectations": {
       "type": "object",
       "description": "Free-form counts asserted by the fixture tests; helps catch silent under-extraction.",

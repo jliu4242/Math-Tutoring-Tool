@@ -68,6 +68,7 @@ def validate(fixture: dict, report: Report) -> None:
         {c.get("slug") for c in fixture.get("concepts", [])}, chapter, report,
     )
     _validate_answers(fixture.get("answers", []), problem_keys, source, report)
+    _validate_variations(fixture, report)
     _validate_expectations(fixture, report)
 
 
@@ -322,6 +323,53 @@ def _validate_answers(answers: list, problem_keys: set[str], source: dict, repor
     unanswered = sorted(problem_keys - seen)
     if unanswered:
         report.warn(f"{len(unanswered)} problem(s) have no answer entry: {', '.join(unanswered[:10])}")
+
+
+def _validate_variations(fixture: dict, report: Report) -> None:
+    variations = fixture.get("variations")
+    if not variations:
+        report.warn("no variations annotated -- Step 4c (variation clustering) has nothing to diff against")
+        return
+
+    problems = {p.get("key"): p for p in fixture.get("problems", [])}
+    concepts = {c.get("slug"): c for c in fixture.get("concepts", [])}
+    seen: set[tuple] = set()
+
+    for i, variation in enumerate(variations):
+        where = f"variations[{i}]"
+        _require_keys(
+            variation,
+            ["section_key", "concept_slug", "variation_key", "member_problem_keys", "representative_problem_key"],
+            where, report,
+        )
+        section_key = variation.get("section_key")
+        slug = variation.get("concept_slug")
+        key = variation.get("variation_key")
+
+        concept = concepts.get(slug)
+        if concept is None:
+            report.error(f"{where}: unknown concept_slug '{slug}'")
+        elif section_key not in (concept.get("section_keys") or []):
+            report.error(f"{where}: concept '{slug}' is not assigned to section '{section_key}'")
+
+        if key and not SLUG_RE.match(key):
+            report.error(f"{where}: variation_key '{key}' is not kebab-case")
+        # Mirrors the partial unique index: one representative per (concept, variation).
+        if (slug, key) in seen:
+            report.error(f"{where}: duplicate variation '{key}' under concept '{slug}'")
+        seen.add((slug, key))
+
+        members = variation.get("member_problem_keys") or []
+        for member in members:
+            problem = problems.get(member)
+            if problem is None:
+                report.error(f"{where} ('{key}'): unknown member problem '{member}'")
+            elif problem.get("section_key") != section_key:
+                report.error(f"{where} ('{key}'): member '{member}' is not in section '{section_key}'")
+            elif slug not in (problem.get("concept_slugs") or []):
+                report.error(f"{where} ('{key}'): member '{member}' is not tagged with concept '{slug}'")
+        if variation.get("representative_problem_key") not in members:
+            report.error(f"{where} ('{key}'): representative_problem_key is not one of member_problem_keys")
 
 
 def _validate_expectations(fixture: dict, report: Report) -> None:

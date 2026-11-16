@@ -8,7 +8,7 @@ bug — not "close enough".
 
 | File | Purpose |
 | --- | --- |
-| `golden_chapter.json` | The real ground truth. **Does not exist yet** — create it from the template. |
+| `golden_chapter.json` | The real ground truth: Pre-Calculus 12, Chapter 1. **AI-drafted, pending human review** — see `annotation.notes`. |
 | `golden_chapter.template.json` | Empty skeleton to copy and fill in. |
 | `golden_chapter.example.json` | Illustrative only. Shows the shape of every field. Never use as ground truth. |
 | `golden_chapter.schema.json` | JSON Schema, for editor autocomplete and validation. |
