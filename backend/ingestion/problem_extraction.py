@@ -22,8 +22,13 @@ docstring assumed turned out not to hold:
        seen a practice-tier heading (PRACTICE_TIER_HEADINGS) -- everything numbered
        before that point is a guided-discovery step, not a problem, and is dropped.
 
-    "Create Connections" also numbers its items "C1"/"C2"/... instead of plain digits,
-    which needed its own pattern (_CREATE_CONNECTIONS_START_RE).
+    "Create Connections" numbers its items "C1"/"C2"/... instead of plain digits. As of
+    2026-11-15 those items are deliberately NOT extracted (product decision recorded in
+    fixtures/golden_chapter.json): a "Create Connections" heading closes the practice
+    tier for problem collection, and any C-numbered item is dropped even if its heading
+    was missed. The heading stays in PRACTICE_TIER_HEADINGS because other stages
+    (content_extraction, concept_agent, worked_example_extraction) use that set to mean
+    "exercise content starts here", which is still true.
 
 Once inside the practice tier, this streams the section's blocks in reading order like
 worked_example_extraction.py does: a block whose own text starts with a number closes
@@ -52,7 +57,12 @@ PRACTICE_TIER_HEADINGS = frozenset(
 # space -- "17a", not "17 a"), then a separator. A bare lettered sub-part ("a)", "b)")
 # has no leading digit and so never matches this -- it extends the open problem instead.
 _ITEM_START_RE = re.compile(r"^\s*(\d+)([a-z])?[.)]\s+")
-# "Create Connections" numbers its items C1, C2, ... instead of digits.
+# Practice-tier headings whose items are never extracted as problems (see module
+# docstring). Seeing one ends problem collection until the next real practice heading.
+SKIPPED_PRACTICE_HEADINGS = frozenset({"create connections"})
+
+# "Create Connections" numbers its items C1, C2, ... instead of digits. Matched only so
+# such items can be recognised and dropped.
 _CREATE_CONNECTIONS_START_RE = re.compile(r"^\s*(C\d+)\b\.?\s*")
 
 # Best-effort signal that a chunk's text already carries LaTeX-ish markup (either a
@@ -63,7 +73,11 @@ _LATEX_MARKER_RE = re.compile(r"\$[^$]+\$|\\[a-zA-Z]+")
 
 def is_practice_heading(text: str) -> bool:
     """Whether a heading block's text marks the start of the practice tier."""
-    return text.strip().rstrip(":").strip().lower() in PRACTICE_TIER_HEADINGS
+    return _heading_label(text) in PRACTICE_TIER_HEADINGS
+
+
+def _heading_label(text: str) -> str:
+    return text.strip().rstrip(":").strip().lower()
 
 
 def _match_item_start(text: str) -> tuple[str, str] | None:
@@ -71,9 +85,6 @@ def _match_item_start(text: str) -> tuple[str, str] | None:
     match = _ITEM_START_RE.match(text)
     if match:
         return match.group(1) + (match.group(2) or ""), text[match.end():].strip()
-    match = _CREATE_CONNECTIONS_START_RE.match(text)
-    if match:
-        return match.group(1), text[match.end():].strip()
     return None
 
 
@@ -141,11 +152,19 @@ def extract_problems(page_items: list[tuple[int, Block | ImageBlock]]) -> list[d
 
         if block.text_level is not None:
             flush()
-            if is_practice_heading(text):
+            if _heading_label(text) in SKIPPED_PRACTICE_HEADINGS:
+                in_practice = False
+            elif is_practice_heading(text):
                 in_practice = True
             continue
 
         if not in_practice:
+            continue
+
+        if _CREATE_CONNECTIONS_START_RE.match(text):
+            # A C-numbered item whose heading was missed: close whatever was open and
+            # leave nothing open, so its body (and sub-parts) are dropped as stray text.
+            flush()
             continue
 
         start = _match_item_start(text)
@@ -173,7 +192,7 @@ def numbering_gaps(problem_numbers: list[str]) -> list[str]:
     A lettered number (17a/17b) counts as covering its base ("17") -- a section that
     prints 17a/17b instead of a plain 17 has not skipped problem 17, it split it, and
     that split must not read as a gap at 17. "Create Connections" numbers (C1, C2, ...)
-    are a separate sequence and are not counted as part of the digit run.
+    are never extracted, and would not count toward the digit run if passed in.
 
     A gap is not automatically a bug: a graph-only exercise with no text layer is a
     legitimate, explainable absence (see fixtures/golden_chapter.example.json's

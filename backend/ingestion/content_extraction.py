@@ -29,6 +29,12 @@ alone:
       Apply/Extend/Create        tables would misrepresent "textbook content" as
       Connections)               including graded exercises.
     header/footer/etc.      -> dropped; page furniture (mineru_extraction.NOISE_TEXT_TYPES)
+    "Your Turn" heading     -> everything after it is dropped until the next "Example N",
+                               "Key Ideas" or practice-tier heading. Your Turn is a
+                               follow-up exercise, not textbook content (2026-11-15
+                               product decision; worked_example_extraction.py drops it
+                               too). Other headings inside it (margin asides) do not
+                               end the skip.
 
 Input is a section's blocks in reading order, already filtered to that section's page
 range by the caller (background.py) -- this module never re-reads MinerU output or
@@ -37,6 +43,7 @@ touches page ranges itself.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .mineru_extraction import NOISE_TEXT_TYPES, Block
@@ -53,6 +60,15 @@ ROUTED_ELSEWHERE = frozenset({"title", "list"})
 
 BODY_TEXT_BLOCK_TYPE = "body_text"
 
+# Headings that end a "Your Turn" span: the next worked example, or the end of
+# Link the Ideas ("Key Ideas"). Practice-tier headings end it too (checked separately).
+_EXAMPLE_HEADING_RE = re.compile(r"(?i)^\s*example\s+\d+[a-z]?\b")
+_YOUR_TURN_END_HEADINGS = frozenset({"key ideas"})
+
+
+def _heading_label(text: str) -> str:
+    return text.strip().rstrip(":").strip().lower()
+
 
 def extract_content_blocks(page_blocks: list[tuple[int, Block]]) -> list[dict[str, Any]]:
     """Build content_blocks rows (minus section_id, added by the caller on write) from
@@ -60,6 +76,7 @@ def extract_content_blocks(page_blocks: list[tuple[int, Block]]) -> list[dict[st
     """
     rows: list[dict[str, Any]] = []
     in_practice = False
+    in_your_turn = False
 
     for page_number, block in page_blocks:
         if block.type in NOISE_TEXT_TYPES or block.type in ROUTED_ELSEWHERE:
@@ -68,11 +85,17 @@ def extract_content_blocks(page_blocks: list[tuple[int, Block]]) -> list[dict[st
             continue
 
         if block.text_level is not None:
+            label = _heading_label(block.text)
             if is_practice_heading(block.text):
                 in_practice = True
+                in_your_turn = False
+            elif label == "your turn":
+                in_your_turn = True
+            elif label in _YOUR_TURN_END_HEADINGS or _EXAMPLE_HEADING_RE.match(block.text):
+                in_your_turn = False
             continue
 
-        if in_practice:
+        if in_practice or in_your_turn:
             continue
 
         if block.type in FOLD_INTO_PREVIOUS and rows and rows[-1]["page_end"] == page_number:

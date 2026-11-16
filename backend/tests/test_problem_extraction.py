@@ -89,20 +89,51 @@ def test_separate_lettered_numbers_become_their_own_rows():
     assert "w" in rows[1]["body_plain"]
 
 
-def test_create_connections_uses_letter_number_style():
-    """"Create Connections" numbers its items C1/C2/... instead of digits -- confirmed
-    against the spike run's page 24."""
+def test_create_connections_items_are_not_extracted():
+    """"Create Connections" (C1/C2/...) questions are deliberately skipped -- the heading
+    closes problem collection, so neither the items nor their sub-parts become rows."""
     rows = extract_problems(
-        [(24, _heading("Create Connections"))]
-        + [
+        [
+            (24, _heading("Apply")),
+            (24, _text("19. Last apply problem.")),
+            (24, _heading("Create Connections")),
             (24, _text("C1 Show that the order of translations does not matter.")),
             (24, _text("a) Explain why this is true.")),
             (24, _text("C2 Complete the square for each function.")),
         ]
     )
 
-    assert [row["problem_number"] for row in rows] == ["C1", "C2"]
-    assert "a) Explain why" in rows[0]["body_plain"]
+    assert [row["problem_number"] for row in rows] == ["19"]
+    assert "Explain why" not in rows[0]["body_plain"]
+
+
+def test_c_numbered_item_is_dropped_even_without_its_heading():
+    """If MinerU misses the Create Connections heading, a C-numbered item must not be
+    glued onto the previous problem or extracted on its own."""
+    rows = extract_problems(
+        _practice_blocks(
+            "19. Last apply problem.",
+            "C1 Show that the order of translations does not matter.",
+            "a) Explain why this is true.",
+        )
+    )
+
+    assert [row["problem_number"] for row in rows] == ["19"]
+    assert "order of translations" not in rows[0]["body_plain"]
+    assert "Explain why" not in rows[0]["body_plain"]
+
+
+def test_a_practice_heading_after_create_connections_reopens_collection():
+    rows = extract_problems(
+        [
+            (24, _heading("Create Connections")),
+            (24, _text("C1 Skipped.")),
+            (25, _heading("Practise")),
+            (25, _text("1. Collected.")),
+        ]
+    )
+
+    assert [row["problem_number"] for row in rows] == ["1"]
 
 
 def test_body_latex_only_set_when_latex_markers_present():
@@ -125,8 +156,8 @@ def test_ordinal_is_sequential_reading_order():
 def test_numbered_text_before_a_practice_heading_is_ignored():
     """The core finding from the spike: Investigate/Reflect and Respond steps reuse
     plain digit-dot numbering with no type signal distinguishing them from real
-    problems. Only a recognized practice-tier heading (Apply/Extend/Practise/Create
-    Connections/Check Your Understanding) opens problem collection.
+    problems. Only a recognized practice-tier heading (Apply/Extend/Practise/Check Your
+    Understanding) opens problem collection.
     """
     blocks = [
         (16, _heading("Reflect and Respond")),

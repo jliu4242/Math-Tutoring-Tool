@@ -18,8 +18,10 @@ more structured than the original version assumed:
     "a) Graph the functions..."          <- plain text, the problem statement
     "Solution"                            <- its own heading block, not plain text
     ...solution content...
-    "Your Turn"                           <- its own heading block: a follow-up prompt
-                                             for the same example, not a new problem
+    "Your Turn"                           <- its own heading block: a follow-up practice
+                                             prompt. Dropped entirely (2026-11-15 product
+                                             decision): it is a new exercise, not part
+                                             of the example's solution.
     ...your-turn content...
     "Example 2"                          <- next example
 
@@ -91,6 +93,9 @@ def extract_worked_examples(page_blocks: list[tuple[int, Block]]) -> list[dict[s
     problem_parts: list[str] = []
     solution_parts: list[str] = []
     in_solution = False
+    # True from a "Your Turn" heading until the example closes: everything in that
+    # span is discarded.
+    in_your_turn = False
     # True immediately after an "Example N" heading with no body text of its own yet --
     # the very next heading-level block, if any, is that example's own subtitle rather
     # than a marker or a terminator. Cleared the moment any other block is seen.
@@ -114,7 +119,7 @@ def extract_worked_examples(page_blocks: list[tuple[int, Block]]) -> list[dict[s
             close_current()
             current_number = heading.group(1)
             current_page = page_number
-            problem_parts, solution_parts, in_solution = [], [], False
+            problem_parts, solution_parts, in_solution, in_your_turn = [], [], False, False
             remainder = heading.group(2).strip()
             if remainder:
                 problem_parts.append(remainder)
@@ -126,9 +131,14 @@ def extract_worked_examples(page_blocks: list[tuple[int, Block]]) -> list[dict[s
         if block.text_level is not None:
             label = text.rstrip(":").strip().lower()
 
-            if label == "solution" or label == "your turn":
-                # "Your Turn" is a follow-up prompt for the same example, not a new
-                # problem -- both share the solution bucket.
+            if label == "your turn":
+                # A follow-up practice prompt, not part of the solution -- drop it and
+                # everything after it until the example closes.
+                in_your_turn = True
+                awaiting_subtitle = False
+                continue
+
+            if label == "solution":
                 in_solution = True
                 awaiting_subtitle = False
                 continue
@@ -140,6 +150,10 @@ def extract_worked_examples(page_blocks: list[tuple[int, Block]]) -> list[dict[s
 
             if label in _SECTION_TERMINATOR_HEADINGS:
                 close_current()
+                in_your_turn = False
+                continue
+
+            if in_your_turn:
                 continue
 
             # An unrecognized heading (a margin aside like "Did You Know?", a glossary
@@ -151,8 +165,8 @@ def extract_worked_examples(page_blocks: list[tuple[int, Block]]) -> list[dict[s
 
         awaiting_subtitle = False
 
-        if current_number is None:
-            continue  # prose before the first "Example N" heading in this section
+        if current_number is None or in_your_turn:
+            continue  # prose before the first "Example N" heading, or Your Turn content
 
         if not in_solution and _SOLUTION_RE.match(text):
             in_solution = True
